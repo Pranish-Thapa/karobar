@@ -5,7 +5,8 @@
   "main": "src/index.js",
   "scripts": {
     "start": "node src/index.js",
-    "dev": "node src/index.js"
+    "dev": "node src/index.js",
+    "build": "cd ../client && npm install && npm run build && cp -r dist ../server/public"
   },
   "dependencies": {
     "bcryptjs": "^2.4.3",

@@ -3,3 +3,5 @@ dist/
 *.db
 .env
 *.log
+vite-err.txt
+vite-out.txt

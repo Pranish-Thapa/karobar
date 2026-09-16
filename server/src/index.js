@@ -697,6 +697,16 @@ app.put('/api/settings/shop', auth, async (req, res) => {
   }
 });
 
+// Serve static frontend
+const path = require('path');
+const publicDir = path.join(__dirname, '..', 'public');
+app.use(express.static(publicDir));
+app.get('*', (req, res) => {
+  if (!req.path.startsWith('/api')) {
+    res.sendFile(path.join(publicDir, 'index.html'));
+  }
+});
+
 app.listen(PORT, () => {
   console.log(`Karobar server running on port ${PORT}`);
 });
