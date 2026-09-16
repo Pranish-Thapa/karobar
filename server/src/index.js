@@ -653,7 +653,7 @@ app.post('/api/invoices', auth, ensureDb, [
     const { sale_id, discount = 0, payment_method = 'cash', notes = '' } = req.body;
 
     const sale = await get(
-      `SELECT s.*, c.name as customer_name, c.phone as customer_phone, c.address as customer_address, c.pan as customer_pan
+      `SELECT s.*, c.name as customer_name, c.phone as customer_phone, c.address as customer_address
        FROM sales s LEFT JOIN customers c ON c.id = s.customer_id
        WHERE s.id = $1 AND s.user_id = $2`, [sale_id, req.userId]
     );
@@ -678,7 +678,7 @@ app.post('/api/invoices', auth, ensureDb, [
 
     const customerSnapshot = sale.customer_id ? {
       name: sale.customer_name, phone: sale.customer_phone,
-      address: sale.customer_address, pan: sale.customer_pan || ''
+      address: sale.customer_address, pan: ''
     } : {};
 
     const itemsSnapshot = saleItems.map((item, idx) => ({
