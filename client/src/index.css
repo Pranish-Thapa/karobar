@@ -64,3 +64,38 @@ body {
 .animate-slide-up {
   animation: slide-up 0.3s ease-out;
 }
+
+/* Invoice Print Styles */
+@media print {
+  body * { visibility: hidden; }
+  #invoice-preview, #invoice-preview * { visibility: visible; }
+  #invoice-preview {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 100%;
+    background: white;
+    color: black;
+    padding: 0;
+    margin: 0;
+    box-shadow: none;
+    border: none;
+  }
+  #invoice-preview .no-print { display: none !important; }
+  #invoice-preview table { border-collapse: collapse; }
+  #invoice-preview th, #invoice-preview td { border: 1px solid #000 !important; }
+  #invoice-preview img { max-width: 100%; }
+  @page { size: A4; margin: 15mm; }
+}
+
+.paper-a5 { max-width: 520px; margin: 0 auto; }
+.paper-thermal { max-width: 300px; margin: 0 auto; }
+
+/* Invoice Modal Overlay */
+.invoice-overlay {
+  @apply fixed inset-0 z-[70] bg-black/60 flex items-start justify-center overflow-y-auto;
+  padding: 2rem 1rem;
+}
+@media (max-width: 640px) {
+  .invoice-overlay { padding: 1rem 0.5rem; }
+}

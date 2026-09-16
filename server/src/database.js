@@ -151,6 +151,56 @@ async function initTables() {
       )
     `);
 
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS business_settings (
+        id TEXT PRIMARY KEY,
+        user_id TEXT NOT NULL UNIQUE,
+        shop_name TEXT DEFAULT '',
+        address TEXT DEFAULT '',
+        phone TEXT DEFAULT '',
+        email TEXT DEFAULT '',
+        website TEXT DEFAULT '',
+        pan TEXT DEFAULT '',
+        vat_number TEXT DEFAULT '',
+        logo_url TEXT DEFAULT '',
+        stamp_url TEXT DEFAULT '',
+        bill_language TEXT DEFAULT 'en',
+        bill_paper_size TEXT DEFAULT 'A4',
+        bill_type TEXT DEFAULT 'commercial',
+        vat_rate NUMERIC DEFAULT 13,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (user_id) REFERENCES users(id)
+      )
+    `);
+
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS invoices (
+        id TEXT PRIMARY KEY,
+        user_id TEXT NOT NULL,
+        sale_id TEXT NOT NULL,
+        invoice_number INTEGER NOT NULL,
+        invoice_type TEXT DEFAULT 'commercial',
+        bill_language TEXT DEFAULT 'en',
+        paper_size TEXT DEFAULT 'A4',
+        business_snapshot JSONB DEFAULT '{}',
+        customer_snapshot JSONB DEFAULT '{}',
+        items_snapshot JSONB DEFAULT '[]',
+        total_amount NUMERIC NOT NULL DEFAULT 0,
+        discount NUMERIC DEFAULT 0,
+        vat_rate NUMERIC DEFAULT 0,
+        vat_amount NUMERIC DEFAULT 0,
+        net_amount NUMERIC NOT NULL DEFAULT 0,
+        amount_paid NUMERIC DEFAULT 0,
+        due_amount NUMERIC DEFAULT 0,
+        payment_method TEXT DEFAULT 'cash',
+        notes TEXT DEFAULT '',
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (user_id) REFERENCES users(id),
+        FOREIGN KEY (sale_id) REFERENCES sales(id)
+      )
+    `);
+
     // Indexes
     const indexes = [
       'CREATE INDEX IF NOT EXISTS idx_customers_user ON customers(user_id)',
@@ -180,6 +230,10 @@ async function initTables() {
       'CREATE INDEX IF NOT EXISTS idx_products_user_sku ON products(user_id, sku)',
       'CREATE INDEX IF NOT EXISTS idx_qr_tokens_user ON qr_tokens(user_id)',
       'CREATE INDEX IF NOT EXISTS idx_connected_devices_user ON connected_devices(user_id)',
+      'CREATE INDEX IF NOT EXISTS idx_invoices_user ON invoices(user_id)',
+      'CREATE INDEX IF NOT EXISTS idx_invoices_sale ON invoices(sale_id)',
+      'CREATE INDEX IF NOT EXISTS idx_invoices_number ON invoices(user_id, invoice_number)',
+      'CREATE INDEX IF NOT EXISTS idx_business_settings_user ON business_settings(user_id)',
     ];
     for (const idx of indexes) {
       await client.query(idx);
@@ -187,6 +241,7 @@ async function initTables() {
 
     // Migrations
     await client.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS last_backup_at TIMESTAMP`).catch(() => {});
+    await client.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS vat_registered BOOLEAN DEFAULT FALSE`).catch(() => {});
 
     await client.query('COMMIT');
   } catch (err) {

@@ -115,6 +115,38 @@ export const api = {
   settings: {
     updateShop: (shopName: string) => request('/settings/shop', { method: 'PUT', body: JSON.stringify({ shopName }) }),
     updateLanguage: (language: string) => request('/settings/language', { method: 'PUT', body: JSON.stringify({ language }) }),
+    getBilling: () => request('/settings/billing'),
+    updateBilling: (data: any) => request('/settings/billing', { method: 'PUT', body: JSON.stringify(data) }),
+    uploadLogo: async (file: File) => {
+      const token = localStorage.getItem('karobar_token');
+      const fd = new FormData();
+      fd.append('logo', file);
+      const res = await fetch(`${API_BASE}/settings/billing/logo`, { method: 'POST', headers: { Authorization: `Bearer ${token}` }, body: fd });
+      if (!res.ok) { const d = await res.json().catch(() => ({})); throw new Error(d.error || 'Upload failed'); }
+      return res.json();
+    },
+    uploadStamp: async (file: File) => {
+      const token = localStorage.getItem('karobar_token');
+      const fd = new FormData();
+      fd.append('stamp', file);
+      const res = await fetch(`${API_BASE}/settings/billing/stamp`, { method: 'POST', headers: { Authorization: `Bearer ${token}` }, body: fd });
+      if (!res.ok) { const d = await res.json().catch(() => ({})); throw new Error(d.error || 'Upload failed'); }
+      return res.json();
+    },
+    removeLogo: () => request('/settings/billing/logo', { method: 'DELETE' }),
+    removeStamp: () => request('/settings/billing/stamp', { method: 'DELETE' }),
+  },
+  invoices: {
+    list: (params?: { search?: string; page?: number; limit?: number }) => {
+      const sp = new URLSearchParams();
+      if (params?.search) sp.set('search', params.search);
+      if (params?.page) sp.set('page', String(params.page));
+      if (params?.limit) sp.set('limit', String(params.limit));
+      return request(`/invoices${sp.toString() ? `?${sp}` : ''}`);
+    },
+    get: (id: string) => request(`/invoices/${id}`),
+    getBySale: (saleId: string) => request(`/invoices/sale/${saleId}`),
+    create: (data: any) => request('/invoices', { method: 'POST', body: JSON.stringify(data) }),
   },
   backup: {
     check: () => request('/backup/check'),

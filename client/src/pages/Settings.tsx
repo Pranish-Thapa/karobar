@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { Store, Smartphone, Laptop, Trash2, QrCode, RefreshCw, Sun, Moon, Globe, Download, Upload, Shield } from 'lucide-react';
+import { Store, Smartphone, Laptop, Trash2, QrCode, RefreshCw, Sun, Moon, Globe, Download, Upload, Shield, Receipt } from 'lucide-react';
 import { api } from '../lib/api';
 import { useAuth } from '../context/AuthContext';
 import { useDarkMode } from '../context/DarkModeContext';
@@ -26,6 +26,18 @@ export default function Settings() {
   const [restoring, setRestoring] = useState(false);
   const [showRestoreConfirm, setShowRestoreConfirm] = useState(false);
   const restoreFileRef = useRef<File | null>(null);
+  const [billing, setBilling] = useState<any>({});
+  const [billingLoading, setBillingLoading] = useState(true);
+  const [billingSaving, setBillingSaving] = useState(false);
+  const [billingMessage, setBillingMessage] = useState('');
+  const logoInputRef = useRef<HTMLInputElement>(null);
+  const stampInputRef = useRef<HTMLInputElement>(null);
+  const [uploadingLogo, setUploadingLogo] = useState(false);
+  const [uploadingStamp, setUploadingStamp] = useState(false);
+
+  useEffect(() => {
+    api.settings.getBilling().then(setBilling).catch(() => {}).finally(() => setBillingLoading(false));
+  }, []);
 
   useEffect(() => {
     api.devices.list().then(setDevices).catch(() => {}).finally(() => setDevicesLoading(false));
@@ -128,6 +140,46 @@ export default function Settings() {
     }
   };
 
+  const handleSaveBilling = async () => {
+    setBillingSaving(true); setBillingMessage('');
+    try {
+      await api.settings.updateBilling(billing);
+      setBillingMessage(t.success + '!');
+      toast('success', t.success);
+    } catch (err: any) { toast('error', err.message); }
+    finally { setBillingSaving(false); }
+  };
+
+  const handleLogoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]; if (!file) return;
+    setUploadingLogo(true);
+    try {
+      const res = await api.settings.uploadLogo(file);
+      setBilling((prev: any) => ({ ...prev, logo_url: res.logo_url }));
+      toast('success', t.success);
+    } catch (err: any) { toast('error', err.message); }
+    finally { setUploadingLogo(false); if (logoInputRef.current) logoInputRef.current.value = ''; }
+  };
+
+  const handleStampUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]; if (!file) return;
+    setUploadingStamp(true);
+    try {
+      const res = await api.settings.uploadStamp(file);
+      setBilling((prev: any) => ({ ...prev, stamp_url: res.stamp_url }));
+      toast('success', t.success);
+    } catch (err: any) { toast('error', err.message); }
+    finally { setUploadingStamp(false); if (stampInputRef.current) stampInputRef.current.value = ''; }
+  };
+
+  const handleRemoveLogo = async () => {
+    try { await api.settings.removeLogo(); setBilling((prev: any) => ({ ...prev, logo_url: '' })); toast('success', t.success); } catch (err: any) { toast('error', err.message); }
+  };
+
+  const handleRemoveStamp = async () => {
+    try { await api.settings.removeStamp(); setBilling((prev: any) => ({ ...prev, stamp_url: '' })); toast('success', t.success); } catch (err: any) { toast('error', err.message); }
+  };
+
   return (
     <div className="pb-20 lg:pb-0 max-w-2xl mx-auto">
       <h1 className="text-2xl font-bold text-gray-900 dark:text-white mb-6">{t.settings}</h1>
@@ -140,6 +192,104 @@ export default function Settings() {
           {message && <p className="text-sm text-primary-600">{message}</p>}
           <button type="submit" disabled={saving} className="btn-primary">{saving ? t.loading : t.saveChanges}</button>
         </form>
+      </div>
+
+      {/* Billing Settings */}
+      <div className="card mb-6">
+        <h2 className="text-lg font-semibold text-gray-900 dark:text-white flex items-center gap-2 mb-4">
+          <Receipt className="w-5 h-5" /> {t.billingSettings || 'Billing Settings'}
+        </h2>
+        {billingLoading ? (
+          <div className="flex justify-center py-4"><div className="animate-spin rounded-full h-6 w-6 border-b-2 border-primary-600"></div></div>
+        ) : (
+          <div className="space-y-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div><label className="label">{t.shopName}</label><input type="text" value={billing.shop_name || ''} onChange={e => setBilling({...billing, shop_name: e.target.value})} className="input" placeholder="Business Name" /></div>
+              <div><label className="label">{t.address || 'Address'}</label><input type="text" value={billing.address || ''} onChange={e => setBilling({...billing, address: e.target.value})} className="input" placeholder="Address" /></div>
+              <div><label className="label">{t.phone}</label><input type="text" value={billing.phone || ''} onChange={e => setBilling({...billing, phone: e.target.value})} className="input" placeholder="Phone" /></div>
+              <div><label className="label">{t.email || 'Email'}</label><input type="email" value={billing.email || ''} onChange={e => setBilling({...billing, email: e.target.value})} className="input" placeholder="Email" /></div>
+              <div><label className="label">{t.website || 'Website'}</label><input type="url" value={billing.website || ''} onChange={e => setBilling({...billing, website: e.target.value})} className="input" placeholder="https://..." /></div>
+              <div><label className="label">PAN</label><input type="text" value={billing.pan || ''} onChange={e => setBilling({...billing, pan: e.target.value})} className="input" placeholder="PAN Number" /></div>
+              <div><label className="label">{t.vatNumber || 'VAT Registration No.'}</label><input type="text" value={billing.vat_number || ''} onChange={e => setBilling({...billing, vat_number: e.target.value})} className="input" placeholder="Optional" /></div>
+              <div><label className="label">{t.vatRate || 'VAT Rate (%)'}</label><input type="number" value={billing.vat_rate || 13} onChange={e => setBilling({...billing, vat_rate: parseFloat(e.target.value) || 0})} className="input" min="0" max="100" /></div>
+            </div>
+
+            {/* Bill Language & Paper Size */}
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 pt-2">
+              <div>
+                <label className="label">{t.billLanguage || 'Bill Language'}</label>
+                <select value={billing.bill_language || 'en'} onChange={e => setBilling({...billing, bill_language: e.target.value})} className="input">
+                  <option value="en">English</option>
+                  <option value="ne">Nepali</option>
+                  <option value="bilingual">Bilingual</option>
+                </select>
+              </div>
+              <div>
+                <label className="label">{t.paperSize || 'Paper Size'}</label>
+                <select value={billing.bill_paper_size || 'A4'} onChange={e => setBilling({...billing, bill_paper_size: e.target.value})} className="input">
+                  <option value="A4">A4</option>
+                  <option value="A5">A5</option>
+                  <option value="thermal">Thermal Receipt</option>
+                </select>
+              </div>
+              <div>
+                <label className="label">{t.billType || 'Bill Type'}</label>
+                <select value={billing.bill_type || 'commercial'} onChange={e => setBilling({...billing, bill_type: e.target.value})} className="input">
+                  <option value="commercial">Commercial Bill</option>
+                  <option value="tax_invoice">Tax Invoice</option>
+                  <option value="abbreviated">Abbreviated Tax Invoice</option>
+                </select>
+              </div>
+            </div>
+
+            {/* Logo Upload */}
+            <div className="pt-2">
+              <label className="label">{t.shopLogo || 'Shop Logo'}</label>
+              <div className="flex items-center gap-4">
+                {billing.logo_url ? (
+                  <div className="flex items-center gap-3">
+                    <img src={billing.logo_url} alt="Logo" className="h-16 w-16 object-contain border rounded-lg dark:border-gray-600" />
+                    <div className="flex flex-col gap-1">
+                      <button onClick={() => logoInputRef.current?.click()} className="text-sm text-primary-600 hover:text-primary-700">{t.replaceLogo || 'Replace'}</button>
+                      <button onClick={handleRemoveLogo} className="text-sm text-red-600 hover:text-red-700">{t.removeLogo || 'Remove'}</button>
+                    </div>
+                  </div>
+                ) : (
+                  <button onClick={() => logoInputRef.current?.click()} disabled={uploadingLogo} className="btn-secondary text-sm flex items-center gap-2">
+                    <Upload className="w-4 h-4" /> {uploadingLogo ? t.loading : t.uploadLogo || 'Upload Logo'}
+                  </button>
+                )}
+                <input ref={logoInputRef} type="file" accept="image/*" className="hidden" onChange={handleLogoUpload} />
+              </div>
+              <p className="text-xs text-gray-400 mt-1">PNG / JPG — {t.recommended || 'Recommended'}</p>
+            </div>
+
+            {/* Stamp Upload */}
+            <div className="pt-2">
+              <label className="label">{t.shopStamp || 'Shop Stamp'} <span className="text-gray-400 font-normal">({t.optional})</span></label>
+              <div className="flex items-center gap-4">
+                {billing.stamp_url ? (
+                  <div className="flex items-center gap-3">
+                    <img src={billing.stamp_url} alt="Stamp" className="h-16 w-16 object-contain border rounded-lg dark:border-gray-600" />
+                    <div className="flex flex-col gap-1">
+                      <button onClick={() => stampInputRef.current?.click()} className="text-sm text-primary-600 hover:text-primary-700">{t.replaceStamp || 'Replace'}</button>
+                      <button onClick={handleRemoveStamp} className="text-sm text-red-600 hover:text-red-700">{t.removeStamp || 'Remove'}</button>
+                    </div>
+                  </div>
+                ) : (
+                  <button onClick={() => stampInputRef.current?.click()} disabled={uploadingStamp} className="btn-secondary text-sm flex items-center gap-2">
+                    <Upload className="w-4 h-4" /> {uploadingStamp ? t.loading : t.uploadStamp || 'Upload Stamp'}
+                  </button>
+                )}
+                <input ref={stampInputRef} type="file" accept="image/*" className="hidden" onChange={handleStampUpload} />
+              </div>
+              <p className="text-xs text-gray-400 mt-1">PNG / JPG — {t.optional}</p>
+            </div>
+
+            {billingMessage && <p className="text-sm text-primary-600">{billingMessage}</p>}
+            <button onClick={handleSaveBilling} disabled={billingSaving} className="btn-primary">{billingSaving ? t.loading : t.saveBilling || 'Save Billing Settings'}</button>
+          </div>
+        )}
       </div>
 
       {/* Backup & Restore */}

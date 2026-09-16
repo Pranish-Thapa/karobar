@@ -9,7 +9,11 @@ const rateLimit = require('express-rate-limit');
 const helmet = require('helmet');
 const { body, query, validationResult } = require('express-validator');
 const { getPool, all, get, run, transaction } = require('./database');
+const multer = require('multer');
 const path = require('path');
+const fs = require('fs');
+
+const upload = multer({ dest: 'uploads/', limits: { fileSize: 5 * 1024 * 1024 }, fileFilter: (req, file, cb) => { if (file.mimetype.startsWith('image/')) cb(null, true); else cb(new Error('Only images allowed')); } });
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -24,6 +28,7 @@ app.use(cors({
   methods: ['GET', 'POST', 'PUT', 'DELETE'],
 }));
 app.use(express.json({ limit: '1mb' }));
+app.use('/uploads', require('express').static(path.join(__dirname, '..', 'uploads')));
 
 // Rate limiting
 const authLimiter = rateLimit({
@@ -529,6 +534,221 @@ app.put('/api/sales/:id', auth, ensureDb, [
   } catch (err) { res.status(400).json({ error: err.message }); }
 });
 
+// ==================== BUSINESS SETTINGS ====================
+app.get('/api/settings/billing', auth, ensureDb, async (req, res) => {
+  try {
+    let settings = await get('SELECT * FROM business_settings WHERE user_id = $1', [req.userId]);
+    if (!settings) {
+      settings = {
+        id: null, user_id: req.userId,
+        shop_name: '', address: '', phone: '', email: '', website: '',
+        pan: '', vat_number: '', logo_url: '', stamp_url: '',
+        bill_language: 'en', bill_paper_size: 'A4', bill_type: 'commercial', vat_rate: 13
+      };
+    }
+    res.json(settings);
+  } catch (err) { res.status(500).json({ error: sanitizeError(err) }); }
+});
+
+app.put('/api/settings/billing', auth, ensureDb, [
+  body('shop_name').optional().trim().isLength({ max: 100 }),
+  body('address').optional().trim().isLength({ max: 300 }),
+  body('phone').optional().trim().isLength({ max: 20 }),
+  body('email').optional().isEmail().normalizeEmail(),
+  body('website').optional().trim().isLength({ max: 200 }),
+  body('pan').optional().trim().isLength({ max: 20 }),
+  body('vat_number').optional().trim().isLength({ max: 20 }),
+  body('bill_language').optional().isIn(['en', 'ne']),
+  body('bill_paper_size').optional().isIn(['A4', 'A5', 'POS']),
+  body('bill_type').optional().isIn(['commercial', 'non_commercial']),
+  body('vat_rate').optional().isFloat({ min: 0, max: 100 }),
+], validate, async (req, res) => {
+  try {
+    const { shop_name, address, phone, email, website, pan, vat_number, bill_language, bill_paper_size, bill_type, vat_rate } = req.body;
+    const existing = await get('SELECT id FROM business_settings WHERE user_id = $1', [req.userId]);
+    if (existing) {
+      await run(
+        `UPDATE business_settings SET shop_name=$1, address=$2, phone=$3, email=$4, website=$5, pan=$6, vat_number=$7, bill_language=$8, bill_paper_size=$9, bill_type=$10, vat_rate=$11, updated_at=CURRENT_TIMESTAMP WHERE user_id=$12`,
+        [shop_name ?? '', address ?? '', phone ?? '', email ?? '', website ?? '', pan ?? '', vat_number ?? '', bill_language ?? 'en', bill_paper_size ?? 'A4', bill_type ?? 'commercial', vat_rate ?? 13, req.userId]
+      );
+    } else {
+      await run(
+        `INSERT INTO business_settings (id, user_id, shop_name, address, phone, email, website, pan, vat_number, bill_language, bill_paper_size, bill_type, vat_rate) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)`,
+        [uuidv4(), req.userId, shop_name ?? '', address ?? '', phone ?? '', email ?? '', website ?? '', pan ?? '', vat_number ?? '', bill_language ?? 'en', bill_paper_size ?? 'A4', bill_type ?? 'commercial', vat_rate ?? 13]
+      );
+    }
+    const settings = await get('SELECT * FROM business_settings WHERE user_id = $1', [req.userId]);
+    res.json(settings);
+  } catch (err) { res.status(500).json({ error: sanitizeError(err) }); }
+});
+
+app.post('/api/settings/billing/logo', auth, ensureDb, upload.single('logo'), async (req, res) => {
+  try {
+    if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
+    const settings = await get('SELECT id, logo_url FROM business_settings WHERE user_id = $1', [req.userId]);
+    if (settings && settings.logo_url) {
+      const oldPath = path.join(__dirname, '..', settings.logo_url);
+      fs.unlink(oldPath, () => {});
+    }
+    const filePath = 'uploads/' + req.file.filename;
+    if (settings) {
+      await run('UPDATE business_settings SET logo_url=$1, updated_at=CURRENT_TIMESTAMP WHERE user_id=$2', [filePath, req.userId]);
+    } else {
+      await run('INSERT INTO business_settings (id, user_id, logo_url) VALUES ($1,$2,$3)', [uuidv4(), req.userId, filePath]);
+    }
+    res.json({ logo_url: filePath });
+  } catch (err) { res.status(500).json({ error: sanitizeError(err) }); }
+});
+
+app.post('/api/settings/billing/stamp', auth, ensureDb, upload.single('stamp'), async (req, res) => {
+  try {
+    if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
+    const settings = await get('SELECT id, stamp_url FROM business_settings WHERE user_id = $1', [req.userId]);
+    if (settings && settings.stamp_url) {
+      const oldPath = path.join(__dirname, '..', settings.stamp_url);
+      fs.unlink(oldPath, () => {});
+    }
+    const filePath = 'uploads/' + req.file.filename;
+    if (settings) {
+      await run('UPDATE business_settings SET stamp_url=$1, updated_at=CURRENT_TIMESTAMP WHERE user_id=$2', [filePath, req.userId]);
+    } else {
+      await run('INSERT INTO business_settings (id, user_id, stamp_url) VALUES ($1,$2,$3)', [uuidv4(), req.userId, filePath]);
+    }
+    res.json({ stamp_url: filePath });
+  } catch (err) { res.status(500).json({ error: sanitizeError(err) }); }
+});
+
+app.delete('/api/settings/billing/logo', auth, ensureDb, async (req, res) => {
+  try {
+    const settings = await get('SELECT id, logo_url FROM business_settings WHERE user_id = $1', [req.userId]);
+    if (settings && settings.logo_url) {
+      const filePath = path.join(__dirname, '..', settings.logo_url);
+      fs.unlink(filePath, () => {});
+      await run('UPDATE business_settings SET logo_url=$1, updated_at=CURRENT_TIMESTAMP WHERE user_id=$2', ['', req.userId]);
+    }
+    res.json({ message: 'Logo removed' });
+  } catch (err) { res.status(500).json({ error: sanitizeError(err) }); }
+});
+
+app.delete('/api/settings/billing/stamp', auth, ensureDb, async (req, res) => {
+  try {
+    const settings = await get('SELECT id, stamp_url FROM business_settings WHERE user_id = $1', [req.userId]);
+    if (settings && settings.stamp_url) {
+      const filePath = path.join(__dirname, '..', settings.stamp_url);
+      fs.unlink(filePath, () => {});
+      await run('UPDATE business_settings SET stamp_url=$1, updated_at=CURRENT_TIMESTAMP WHERE user_id=$2', ['', req.userId]);
+    }
+    res.json({ message: 'Stamp removed' });
+  } catch (err) { res.status(500).json({ error: sanitizeError(err) }); }
+});
+
+// ==================== INVOICES ====================
+app.post('/api/invoices', auth, ensureDb, [
+  body('sale_id').isString().notEmpty().withMessage('Sale ID is required'),
+  body('discount').optional().isFloat({ min: 0 }),
+  body('payment_method').optional().trim().isLength({ max: 50 }),
+  body('notes').optional().trim().isLength({ max: 500 }),
+], validate, async (req, res) => {
+  try {
+    const { sale_id, discount = 0, payment_method = 'cash', notes = '' } = req.body;
+
+    const sale = await get(
+      `SELECT s.*, c.name as customer_name, c.phone as customer_phone, c.address as customer_address, c.pan as customer_pan
+       FROM sales s LEFT JOIN customers c ON c.id = s.customer_id
+       WHERE s.id = $1 AND s.user_id = $2`, [sale_id, req.userId]
+    );
+    if (!sale) return res.status(404).json({ error: 'Sale not found' });
+
+    const saleItems = await all(
+      `SELECT si.*, p.name as product_name FROM sale_items si
+       LEFT JOIN products p ON p.id = si.product_id WHERE si.sale_id = $1`, [sale_id]
+    );
+
+    const settings = await get('SELECT * FROM business_settings WHERE user_id = $1', [req.userId]);
+    const user = await get('SELECT vat_registered FROM users WHERE id = $1', [req.userId]);
+
+    const maxInvoice = await get('SELECT MAX(invoice_number) as max_num FROM invoices WHERE user_id = $1', [req.userId]);
+    const nextNumber = (maxInvoice && maxInvoice.max_num) ? maxInvoice.max_num + 1 : 1;
+
+    const businessSnapshot = settings ? {
+      shop_name: settings.shop_name, address: settings.address, phone: settings.phone,
+      email: settings.email, website: settings.website, pan: settings.pan,
+      vat_number: settings.vat_number, logo_url: settings.logo_url, stamp_url: settings.stamp_url
+    } : {};
+
+    const customerSnapshot = sale.customer_id ? {
+      name: sale.customer_name, phone: sale.customer_phone,
+      address: sale.customer_address, pan: sale.customer_pan || ''
+    } : {};
+
+    const itemsSnapshot = saleItems.map((item, idx) => ({
+      sn: idx + 1, name: item.product_name || 'Unknown',
+      quantity: item.quantity, unit_price: Number(item.selling_price),
+      amount: Number(item.quantity) * Number(item.selling_price)
+    }));
+
+    const totalAmount = itemsSnapshot.reduce((sum, item) => sum + item.amount, 0);
+    const isVatRegistered = user && user.vat_registered;
+    const vatRate = settings ? Number(settings.vat_rate) : 13;
+    const vatAmount = isVatRegistered ? totalAmount * vatRate / 100 : 0;
+    const netAmount = totalAmount + vatAmount - (discount || 0);
+
+    const id = uuidv4();
+    await run(
+      `INSERT INTO invoices (id, user_id, sale_id, invoice_number, invoice_type, bill_language, paper_size,
+        business_snapshot, customer_snapshot, items_snapshot, total_amount, discount, vat_rate, vat_amount,
+        net_amount, amount_paid, due_amount, payment_method, notes)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19)`,
+      [
+        id, req.userId, sale_id, nextNumber,
+        settings ? settings.bill_type : 'commercial',
+        settings ? settings.bill_language : 'en',
+        settings ? settings.bill_paper_size : 'A4',
+        JSON.stringify(businessSnapshot), JSON.stringify(customerSnapshot), JSON.stringify(itemsSnapshot),
+        totalAmount, discount || 0, isVatRegistered ? vatRate : 0, vatAmount, netAmount,
+        sale.amount_paid, sale.due_amount, payment_method, notes
+      ]
+    );
+
+    const invoice = await get('SELECT * FROM invoices WHERE id = $1', [id]);
+    res.json(invoice);
+  } catch (err) { res.status(500).json({ error: sanitizeError(err) }); }
+});
+
+app.get('/api/invoices/sale/:saleId', auth, ensureDb, async (req, res) => {
+  try {
+    const invoice = await get('SELECT * FROM invoices WHERE sale_id = $1 AND user_id = $2', [req.params.saleId, req.userId]);
+    if (!invoice) return res.status(404).json({ error: 'Invoice not found for this sale' });
+    res.json(invoice);
+  } catch (err) { res.status(500).json({ error: sanitizeError(err) }); }
+});
+
+app.get('/api/invoices/:id', auth, ensureDb, async (req, res) => {
+  try {
+    const invoice = await get('SELECT * FROM invoices WHERE id = $1 AND user_id = $2', [req.params.id, req.userId]);
+    if (!invoice) return res.status(404).json({ error: 'Invoice not found' });
+    res.json(invoice);
+  } catch (err) { res.status(500).json({ error: sanitizeError(err) }); }
+});
+
+app.get('/api/invoices', auth, ensureDb, apiLimiter, async (req, res) => {
+  try {
+    const { search, page = 1, limit = 50 } = req.query;
+    const parsedPage = Math.max(1, parseInt(page) || 1);
+    const lim = Math.min(200, Math.max(1, parseInt(limit) || 50));
+    const offset = (parsedPage - 1) * lim;
+    if (search) {
+      const rows = await all('SELECT * FROM invoices WHERE user_id = $1 AND invoice_number::text ILIKE $2 ORDER BY created_at DESC LIMIT $3 OFFSET $4', [req.userId, `%${search}%`, lim, offset]);
+      const count = await get('SELECT COUNT(*) as total FROM invoices WHERE user_id = $1 AND invoice_number::text ILIKE $2', [req.userId, `%${search}%`]);
+      res.json({ data: rows, total: parseInt(count.total), page: parsedPage, limit: lim });
+    } else {
+      const rows = await all('SELECT * FROM invoices WHERE user_id = $1 ORDER BY created_at DESC LIMIT $2 OFFSET $3', [req.userId, lim, offset]);
+      const count = await get('SELECT COUNT(*) as total FROM invoices WHERE user_id = $1', [req.userId]);
+      res.json({ data: rows, total: parseInt(count.total), page: parsedPage, limit: lim });
+    }
+  } catch (err) { res.status(500).json({ error: sanitizeError(err) }); }
+});
+
 // ==================== DASHBOARD ====================
 app.get('/api/dashboard', auth, ensureDb, async (req, res) => {
   try {
@@ -784,10 +1004,8 @@ app.put('/api/settings/shop', auth, ensureDb, [
 // ==================== BACKUP & RESTORE ====================
 const { execFile } = require('child_process');
 const { promisify } = require('util');
-const fs = require('fs');
 const os = require('os');
-const multer = require('multer');
-const upload = multer({ dest: os.tmpdir(), limits: { fileSize: 50 * 1024 * 1024 } });
+const backupUpload = multer({ dest: os.tmpdir(), limits: { fileSize: 50 * 1024 * 1024 } });
 const execFileAsync = promisify(execFile);
 
 const BACKUP_INTERVAL_DAYS = 10;
@@ -898,7 +1116,7 @@ function splitSqlStatements(sql) {
   return statements;
 }
 
-app.post('/api/backup/restore', auth, ensureDb, upload.single('backup'), async (req, res) => {
+app.post('/api/backup/restore', auth, ensureDb, backupUpload.single('backup'), async (req, res) => {
   try {
     if (!req.file) return res.status(400).json({ error: 'No backup file uploaded' });
 

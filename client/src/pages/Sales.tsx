@@ -1,10 +1,11 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { Search, Plus, ShoppingCart, Clock, CheckCircle, X, Filter, RotateCcw, DollarSign, ChevronDown } from 'lucide-react';
+import { Search, Plus, ShoppingCart, Clock, CheckCircle, X, Filter, RotateCcw, DollarSign, ChevronDown, Receipt, FileText, Printer } from 'lucide-react';
 import { api } from '../lib/api';
 import { formatCurrency, formatDate } from '../lib/utils';
 import { useI18n } from '../context/I18nContext';
 import { useToast } from '../components/Toast';
 import Pagination from '../components/Pagination';
+import InvoicePreview from '../components/InvoicePreview';
 
 const PAGE_LIMIT = 10;
 
@@ -93,6 +94,9 @@ export default function Sales() {
   const [editingSaleId, setEditingSaleId] = useState<string | null>(null);
   const [editPaymentAmount, setEditPaymentAmount] = useState('');
   const [updatingPayment, setUpdatingPayment] = useState<string | null>(null);
+  const [showInvoice, setShowInvoice] = useState(false);
+  const [currentInvoice, setCurrentInvoice] = useState<any>(null);
+  const [generatingInvoice, setGeneratingInvoice] = useState<string | null>(null);
 
   const debounceTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -206,6 +210,43 @@ export default function Sales() {
     }
   };
 
+  const handleCreateBill = async (saleId: string) => {
+    setGeneratingInvoice(saleId);
+    try {
+      const existing = await api.invoices.getBySale(saleId).catch(() => null);
+      if (existing) {
+        setCurrentInvoice(existing);
+        setShowInvoice(true);
+      } else {
+        const invoice = await api.invoices.create({ sale_id: saleId });
+        setCurrentInvoice(invoice);
+        setShowInvoice(true);
+        loadData();
+      }
+    } catch (err: any) {
+      toast('error', err.message);
+    } finally {
+      setGeneratingInvoice(null);
+    }
+  };
+
+  const handleViewBill = async (saleId: string) => {
+    setGeneratingInvoice(saleId);
+    try {
+      const invoice = await api.invoices.getBySale(saleId);
+      setCurrentInvoice(invoice);
+      setShowInvoice(true);
+    } catch (err: any) {
+      toast('error', err.message);
+    } finally {
+      setGeneratingInvoice(null);
+    }
+  };
+
+  const handlePrintBill = () => {
+    window.print();
+  };
+
   const upcomingOrders = orders.filter(o => o.status === 'upcoming');
 
   return (
@@ -299,6 +340,11 @@ export default function Sales() {
                     )}
                   </div>
                 )}
+                <div className="mt-3 pt-3 border-t dark:border-gray-700 flex gap-2 flex-wrap">
+                  <button onClick={() => handleCreateBill(sale.id)} disabled={generatingInvoice === sale.id} className="text-sm text-primary-600 hover:text-primary-700 font-medium flex items-center gap-1">
+                    <Receipt className="w-3 h-3" /> {generatingInvoice === sale.id ? t.loading : t.createBill || 'Create Bill'}
+                  </button>
+                </div>
               </div>
             );
           })}</div>
@@ -346,6 +392,15 @@ export default function Sales() {
           <div className="flex gap-3"><button type="button" onClick={() => setShowReturn(false)} className="btn-secondary flex-1">{t.cancel}</button><button type="submit" disabled={submittingReturn} className="btn-primary flex-1">{submittingReturn ? t.loading : t.confirm}</button></div>
         </form>
       </div></div>}
+
+      {/* Invoice Modal */}
+      {showInvoice && currentInvoice && (
+        <InvoicePreview
+          invoice={currentInvoice}
+          onClose={() => { setShowInvoice(false); setCurrentInvoice(null); }}
+          onPrint={handlePrintBill}
+        />
+      )}
     </div>
   );
 }
