@@ -59,11 +59,20 @@ export default function Settings() {
     }
   };
 
-  const disconnectDevice = async (deviceId: string) => {
-    if (!confirm(t.disconnect + '?')) return;
-    setDisconnectingId(deviceId);
+  const [showDisconnectConfirm, setShowDisconnectConfirm] = useState(false);
+  const [disconnectTarget, setDisconnectTarget] = useState<string | null>(null);
+
+  const handleDisconnectClick = (deviceId: string) => {
+    setDisconnectTarget(deviceId);
+    setShowDisconnectConfirm(true);
+  };
+
+  const disconnectDevice = async () => {
+    if (!disconnectTarget) return;
+    setShowDisconnectConfirm(false);
+    setDisconnectingId(disconnectTarget);
     try {
-      await api.devices.remove(deviceId);
+      await api.devices.remove(disconnectTarget);
       const updated = await api.devices.list();
       setDevices(updated);
       toast('success', t.success);
@@ -71,6 +80,7 @@ export default function Settings() {
       toast('error', err.message);
     } finally {
       setDisconnectingId(null);
+      setDisconnectTarget(null);
     }
   };
 
@@ -202,7 +212,7 @@ export default function Settings() {
               {device.device_type === 'mobile' ? <Smartphone className="w-5 h-5 text-gray-500" /> : <Laptop className="w-5 h-5 text-gray-500" />}
               <div><p className="font-medium text-gray-900 dark:text-white text-sm">{device.device_name}</p><p className="text-xs text-gray-400">Last active: {new Date(device.last_active).toLocaleDateString()}</p></div>
             </div>
-            <button onClick={() => disconnectDevice(device.id)} disabled={disconnectingId === device.id} className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg disabled:opacity-50 disabled:cursor-not-allowed">
+            <button onClick={() => handleDisconnectClick(device.id)} disabled={disconnectingId === device.id} className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg disabled:opacity-50 disabled:cursor-not-allowed">
               {disconnectingId === device.id ? <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-red-600"></div> : <Trash2 className="w-4 h-4" />}
             </button>
           </div>
@@ -215,6 +225,13 @@ export default function Settings() {
         message="This will REPLACE ALL your current data with the backup file. This cannot be undone. Are you sure?"
         onConfirm={handleRestoreConfirm}
         onCancel={() => setShowRestoreConfirm(false)}
+      />
+      <ConfirmDialog
+        open={showDisconnectConfirm}
+        title={t.disconnect}
+        message={t.disconnect + '?'}
+        onConfirm={disconnectDevice}
+        onCancel={() => setShowDisconnectConfirm(false)}
       />
     </div>
   );

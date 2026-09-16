@@ -63,7 +63,9 @@ const auth = (req, res, next) => {
   const token = req.headers.authorization?.split(' ')[1];
   if (!token) return res.status(401).json({ error: 'No token provided' });
   try {
-    req.userId = jwt.verify(token, JWT_SECRET).userId;
+    const payload = jwt.verify(token, JWT_SECRET);
+    if (!payload.userId) return res.status(401).json({ error: 'Invalid token' });
+    req.userId = payload.userId;
     next();
   } catch {
     res.status(401).json({ error: 'Invalid token' });
@@ -110,9 +112,11 @@ app.post('/api/auth/login', authLimiter, ensureDb, [
 });
 
 app.get('/api/auth/me', auth, ensureDb, async (req, res) => {
-  const user = await get('SELECT id, name, email, shop_name, language FROM users WHERE id = $1', [req.userId]);
-  if (!user) return res.status(404).json({ error: 'User not found' });
-  res.json({ id: user.id, name: user.name, email: user.email, shopName: user.shop_name, language: user.language || 'en' });
+  try {
+    const user = await get('SELECT id, name, email, shop_name, language FROM users WHERE id = $1', [req.userId]);
+    if (!user) return res.status(404).json({ error: 'User not found' });
+    res.json({ id: user.id, name: user.name, email: user.email, shopName: user.shop_name, language: user.language || 'en' });
+  } catch (err) { res.status(500).json({ error: sanitizeError(err) }); }
 });
 
 // ==================== CUSTOMERS ====================
@@ -140,9 +144,13 @@ app.get('/api/customers/:id', auth, ensureDb, async (req, res) => {
     const transactions = await all(`
       SELECT s.*, string_agg(p.name, ', ') as product_names
       FROM sales s LEFT JOIN sale_items si ON si.sale_id = s.id LEFT JOIN products p ON p.id = si.product_id
-      WHERE s.customer_id = $1 GROUP BY s.id ORDER BY s.sale_date DESC LIMIT 100
-    `, [req.params.id]);
-    const payments = await all('SELECT * FROM customer_payments WHERE customer_id = $1 ORDER BY payment_date DESC LIMIT 100', [req.params.id]);
+      WHERE s.customer_id = $1 AND s.user_id = $2 GROUP BY s.id ORDER BY s.sale_date DESC LIMIT 100
+    `, [req.params.id, req.userId]);
+    const payments = await all(`
+      SELECT cp.* FROM customer_payments cp
+      JOIN customers c ON c.id = cp.customer_id
+      WHERE cp.customer_id = $1 AND c.user_id = $2 ORDER BY cp.payment_date DESC LIMIT 100
+    `, [req.params.id, req.userId]);
     res.json({ ...customer, transactions, payments });
   } catch (err) { res.status(500).json({ error: sanitizeError(err) }); }
 });
@@ -167,7 +175,8 @@ app.put('/api/customers/:id', auth, ensureDb, [
 ], validate, async (req, res) => {
   try {
     const { name, phone, address, notes } = req.body;
-    await run('UPDATE customers SET name=$1, phone=$2, address=$3, notes=$4, updated_at=CURRENT_TIMESTAMP WHERE id=$5 AND user_id=$6', [name, phone || '', address || '', notes || '', req.params.id, req.userId]);
+    const result = await run('UPDATE customers SET name=$1, phone=$2, address=$3, notes=$4, updated_at=CURRENT_TIMESTAMP WHERE id=$5 AND user_id=$6', [name, phone || null, address || null, notes || null, req.params.id, req.userId]);
+    if (result.rowCount === 0) return res.status(404).json({ error: 'Customer not found' });
     const customer = await get('SELECT * FROM customers WHERE id = $1', [req.params.id]);
     res.json(customer);
   } catch (err) { res.status(500).json({ error: sanitizeError(err) }); }
@@ -175,7 +184,13 @@ app.put('/api/customers/:id', auth, ensureDb, [
 
 app.delete('/api/customers/:id', auth, ensureDb, async (req, res) => {
   try {
-    await run('DELETE FROM customers WHERE id = $1 AND user_id = $2', [req.params.id, req.userId]);
+    await transaction(async (client) => {
+      await client.query('DELETE FROM customer_payments WHERE customer_id = $1', [req.params.id]);
+      await client.query('DELETE FROM returns WHERE customer_id = $1', [req.params.id]);
+      await client.query('UPDATE sales SET customer_id = NULL WHERE customer_id = $1', [req.params.id]);
+      await client.query('UPDATE orders SET customer_id = NULL WHERE customer_id = $1', [req.params.id]);
+      await client.query('DELETE FROM customers WHERE id = $1 AND user_id = $2', [req.params.id, req.userId]);
+    });
     res.json({ message: 'Customer deleted' });
   } catch (err) { res.status(500).json({ error: sanitizeError(err) }); }
 });
@@ -196,10 +211,10 @@ app.post('/api/customers/:id/payments', auth, ensureDb, [
       await client.query('INSERT INTO customer_payments (id, customer_id, sale_id, amount, notes) VALUES ($1, $2, $3, $4, $5)', [uuidv4(), req.params.id, sale_id || null, amount, notes || '']);
       await client.query('UPDATE customers SET total_paid = total_paid + $1, outstanding_dues = outstanding_dues - $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2', [amount, req.params.id]);
       if (sale_id) {
-        const sale = await client.query('SELECT * FROM sales WHERE id = $1', [sale_id]);
+        const sale = await client.query('SELECT * FROM sales WHERE id = $1 AND customer_id = $2 FOR UPDATE', [sale_id, req.params.id]);
         if (sale.rows.length > 0) {
-          await client.query('UPDATE sales SET amount_paid = amount_paid + $1, due_amount = due_amount - $1 WHERE id = $2', [amount, sale_id]);
-          if (sale.rows[0].order_id) await client.query('UPDATE orders SET amount_paid = amount_paid + $1, due_amount = due_amount - $1 WHERE id = $2', [amount, sale.rows[0].order_id]);
+          await client.query('UPDATE sales SET amount_paid = amount_paid + $1, due_amount = GREATEST(0, due_amount - $1) WHERE id = $2', [amount, sale_id]);
+          if (sale.rows[0].order_id) await client.query('UPDATE orders SET amount_paid = amount_paid + $1, due_amount = GREATEST(0, due_amount - $1) WHERE id = $2', [amount, sale.rows[0].order_id]);
         }
       }
       const updated = await client.query('SELECT * FROM customers WHERE id = $1', [req.params.id]);
@@ -229,9 +244,11 @@ app.get('/api/products', auth, ensureDb, apiLimiter, async (req, res) => {
 });
 
 app.get('/api/products/:id', auth, ensureDb, async (req, res) => {
-  const product = await get('SELECT * FROM products WHERE id = $1 AND user_id = $2', [req.params.id, req.userId]);
-  if (!product) return res.status(404).json({ error: 'Product not found' });
-  res.json(product);
+  try {
+    const product = await get('SELECT * FROM products WHERE id = $1 AND user_id = $2', [req.params.id, req.userId]);
+    if (!product) return res.status(404).json({ error: 'Product not found' });
+    res.json(product);
+  } catch (err) { res.status(500).json({ error: sanitizeError(err) }); }
 });
 
 app.post('/api/products', auth, ensureDb, [
@@ -260,7 +277,8 @@ app.put('/api/products/:id', auth, ensureDb, [
 ], validate, async (req, res) => {
   try {
     const { name, sku, category, actual_price, selling_price, stock, low_stock_threshold, unit, description } = req.body;
-    await run('UPDATE products SET name=$1, sku=$2, category=$3, actual_price=$4, selling_price=$5, stock=$6, low_stock_threshold=$7, unit=$8, description=$9, updated_at=CURRENT_TIMESTAMP WHERE id=$10 AND user_id=$11', [name, sku || '', category || 'General', actual_price || 0, selling_price || 0, stock || 0, low_stock_threshold || 5, unit || 'pcs', description || '', req.params.id, req.userId]);
+    const result = await run('UPDATE products SET name=$1, sku=$2, category=$3, actual_price=$4, selling_price=$5, stock=$6, low_stock_threshold=$7, unit=$8, description=$9, updated_at=CURRENT_TIMESTAMP WHERE id=$10 AND user_id=$11', [name, sku || '', category || 'General', actual_price || 0, selling_price || 0, stock || 0, low_stock_threshold || 5, unit || 'pcs', description || '', req.params.id, req.userId]);
+    if (result.rowCount === 0) return res.status(404).json({ error: 'Product not found' });
     if ((stock || 0) <= (low_stock_threshold || 5)) {
       const existing = await get('SELECT id FROM notifications WHERE user_id = $1 AND entity_id = $2 AND type = $3 AND read = FALSE', [req.userId, req.params.id, 'low_stock']);
       if (!existing) await run('INSERT INTO notifications (id, user_id, type, title, message, entity_id, entity_type) VALUES ($1,$2,$3,$4,$5,$6,$7)', [uuidv4(), req.userId, 'low_stock', 'Low Stock Alert', `${name} is low in stock. Only ${stock || 0} units remaining.`, req.params.id, 'product']);
@@ -272,7 +290,14 @@ app.put('/api/products/:id', auth, ensureDb, [
 
 app.delete('/api/products/:id', auth, ensureDb, async (req, res) => {
   try {
-    await run('DELETE FROM products WHERE id = $1 AND user_id = $2', [req.params.id, req.userId]);
+    await transaction(async (client) => {
+      await client.query('DELETE FROM sale_items WHERE product_id = $1', [req.params.id]);
+      await client.query('DELETE FROM order_items WHERE product_id = $1', [req.params.id]);
+      await client.query('DELETE FROM returns WHERE product_id = $1', [req.params.id]);
+      await client.query('DELETE FROM inventory_adjustments WHERE product_id = $1', [req.params.id]);
+      await client.query('DELETE FROM notifications WHERE entity_id = $1 AND entity_type = $2', [req.params.id, 'product']);
+      await client.query('DELETE FROM products WHERE id = $1 AND user_id = $2', [req.params.id, req.userId]);
+    });
     res.json({ message: 'Product deleted' });
   } catch (err) { res.status(500).json({ error: sanitizeError(err) }); }
 });
@@ -343,6 +368,7 @@ app.put('/api/orders/:id', auth, ensureDb, [
     const { status, notes, expected_date } = req.body;
     const order = await get('SELECT * FROM orders WHERE id = $1 AND user_id = $2', [req.params.id, req.userId]);
     if (!order) return res.status(404).json({ error: 'Order not found' });
+    if (order.status === 'completed') return res.status(400).json({ error: 'Cannot modify a completed order' });
     await run('UPDATE orders SET status=$1, notes=$2, expected_date=$3 WHERE id=$4', [status || order.status, notes ?? order.notes, expected_date || order.expected_date, req.params.id]);
     const updated = await get('SELECT * FROM orders WHERE id = $1', [req.params.id]);
     res.json(updated);
@@ -495,18 +521,24 @@ app.get('/api/profit-loss', auth, ensureDb, async (req, res) => {
 
 // ==================== NOTIFICATIONS ====================
 app.get('/api/notifications', auth, ensureDb, async (req, res) => {
-  const notifications = await all('SELECT * FROM notifications WHERE user_id = $1 ORDER BY created_at DESC LIMIT 50', [req.userId]);
-  res.json(notifications);
+  try {
+    const notifications = await all('SELECT * FROM notifications WHERE user_id = $1 ORDER BY created_at DESC LIMIT 50', [req.userId]);
+    res.json(notifications);
+  } catch (err) { res.status(500).json({ error: sanitizeError(err) }); }
 });
 
 app.put('/api/notifications/:id/read', auth, ensureDb, async (req, res) => {
-  await run('UPDATE notifications SET read = TRUE WHERE id = $1 AND user_id = $2', [req.params.id, req.userId]);
-  res.json({ message: 'Marked as read' });
+  try {
+    await run('UPDATE notifications SET read = TRUE WHERE id = $1 AND user_id = $2', [req.params.id, req.userId]);
+    res.json({ message: 'Marked as read' });
+  } catch (err) { res.status(500).json({ error: sanitizeError(err) }); }
 });
 
 app.put('/api/notifications/read-all', auth, ensureDb, async (req, res) => {
-  await run('UPDATE notifications SET read = TRUE WHERE user_id = $1', [req.userId]);
-  res.json({ message: 'All marked as read' });
+  try {
+    await run('UPDATE notifications SET read = TRUE WHERE user_id = $1', [req.userId]);
+    res.json({ message: 'All marked as read' });
+  } catch (err) { res.status(500).json({ error: sanitizeError(err) }); }
 });
 
 // ==================== QR DEVICE CONNECTION ====================
@@ -540,18 +572,24 @@ app.post('/api/qr/connect', ensureDb, authLimiter, async (req, res) => {
 });
 
 app.get('/api/devices', auth, ensureDb, async (req, res) => {
-  const devices = await all('SELECT * FROM connected_devices WHERE user_id = $1 ORDER BY last_active DESC', [req.userId]);
-  res.json(devices);
+  try {
+    const devices = await all('SELECT * FROM connected_devices WHERE user_id = $1 ORDER BY last_active DESC', [req.userId]);
+    res.json(devices);
+  } catch (err) { res.status(500).json({ error: sanitizeError(err) }); }
 });
 
 app.delete('/api/devices/:id', auth, ensureDb, async (req, res) => {
-  await run('DELETE FROM connected_devices WHERE id = $1 AND user_id = $2', [req.params.id, req.userId]);
-  res.json({ message: 'Device disconnected' });
+  try {
+    await run('DELETE FROM connected_devices WHERE id = $1 AND user_id = $2', [req.params.id, req.userId]);
+    res.json({ message: 'Device disconnected' });
+  } catch (err) { res.status(500).json({ error: sanitizeError(err) }); }
 });
 
 app.get('/api/categories', auth, ensureDb, async (req, res) => {
-  const categories = await all('SELECT DISTINCT category FROM products WHERE user_id = $1 ORDER BY category', [req.userId]);
-  res.json(categories.map(c => c.category));
+  try {
+    const categories = await all('SELECT DISTINCT category FROM products WHERE user_id = $1 ORDER BY category', [req.userId]);
+    res.json(categories.map(c => c.category));
+  } catch (err) { res.status(500).json({ error: sanitizeError(err) }); }
 });
 
 // ==================== RETURNS ====================
@@ -573,8 +611,11 @@ app.post('/api/returns', auth, ensureDb, [
       const refund = saleItem.selling_price * quantity;
       const id = uuidv4();
       await client.query('INSERT INTO returns (id, user_id, sale_id, customer_id, product_id, quantity, reason, refund_amount, notes) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)', [id, req.userId, sale_id, sale.customer_id, product_id, quantity, reason || '', refund, notes || '']);
+      // Lock product for stock update
+      await client.query('SELECT * FROM products WHERE id = $1 FOR UPDATE', [product_id]);
       await client.query('UPDATE products SET stock = stock + $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2', [quantity, product_id]);
-      await client.query('UPDATE sales SET total_amount = total_amount - $1, profit = profit - ($1 - $2 * $3), amount_paid = GREATEST(0, amount_paid - $1), due_amount = GREATEST(0, due_amount - $1) WHERE id = $4', [refund, saleItem.actual_price, quantity, sale_id]);
+      // Fix accounting: reduce total_amount and recalculate due_amount
+      await client.query('UPDATE sales SET total_amount = total_amount - $1, profit = profit - ($1 - $2 * $3), due_amount = GREATEST(0, total_amount - $1 - amount_paid) WHERE id = $4', [refund, saleItem.actual_price, quantity, sale_id]);
       if (sale.customer_id) await client.query('UPDATE customers SET total_purchases = GREATEST(0, total_purchases - $1), outstanding_dues = GREATEST(0, outstanding_dues - $1), updated_at = CURRENT_TIMESTAMP WHERE id = $2', [refund, sale.customer_id]);
       return (await client.query('SELECT * FROM returns WHERE id = $1', [id])).rows[0];
     });
@@ -583,8 +624,10 @@ app.post('/api/returns', auth, ensureDb, [
 });
 
 app.get('/api/returns', auth, ensureDb, async (req, res) => {
-  const returns = await all(`SELECT r.*, p.name as product_name, c.name as customer_name FROM returns r LEFT JOIN products p ON p.id = r.product_id LEFT JOIN customers c ON c.id = r.customer_id WHERE r.user_id = $1 ORDER BY r.return_date DESC`, [req.userId]);
-  res.json(returns);
+  try {
+    const returns = await all(`SELECT r.*, p.name as product_name, c.name as customer_name FROM returns r LEFT JOIN products p ON p.id = r.product_id LEFT JOIN customers c ON c.id = r.customer_id WHERE r.user_id = $1 ORDER BY r.return_date DESC`, [req.userId]);
+    res.json(returns);
+  } catch (err) { res.status(500).json({ error: sanitizeError(err) }); }
 });
 
 // ==================== INVENTORY ADJUSTMENTS ====================
@@ -616,8 +659,10 @@ app.post('/api/inventory/adjust', auth, ensureDb, [
 });
 
 app.get('/api/inventory/adjustments', auth, ensureDb, async (req, res) => {
-  const adjustments = await all(`SELECT ia.*, p.name as product_name FROM inventory_adjustments ia LEFT JOIN products p ON p.id = ia.product_id WHERE ia.user_id = $1 ORDER BY ia.adjusted_at DESC`, [req.userId]);
-  res.json(adjustments);
+  try {
+    const adjustments = await all(`SELECT ia.*, p.name as product_name FROM inventory_adjustments ia LEFT JOIN products p ON p.id = ia.product_id WHERE ia.user_id = $1 ORDER BY ia.adjusted_at DESC`, [req.userId]);
+    res.json(adjustments);
+  } catch (err) { res.status(500).json({ error: sanitizeError(err) }); }
 });
 
 // ==================== BULK PRODUCT IMPORT ====================
@@ -728,12 +773,21 @@ async function manualBackup(dbUrl, tmpFile) {
   const client = await pool.connect();
   try {
     let sql = '-- Karobar Backup\n-- Generated: ' + new Date().toISOString() + '\n\n';
+    sql += 'SET session_replication_role = replica;\n\n';
+    // Child tables first (so TRUNCATE CASCADE works correctly)
     const tables = ['inventory_adjustments', 'returns', 'notifications', 'customer_payments', 'sale_items', 'order_items', 'sales', 'orders', 'products', 'customers', 'connected_devices', 'qr_tokens', 'users'];
+    // First pass: truncate all
+    sql += '-- Truncate all tables\n';
     for (const table of tables) {
+      sql += `TRUNCATE TABLE ${table} CASCADE;\n`;
+    }
+    sql += '\n';
+    // Second pass: insert data in parent-first order
+    const insertOrder = ['users', 'qr_tokens', 'connected_devices', 'customers', 'products', 'orders', 'order_items', 'sales', 'sale_items', 'customer_payments', 'notifications', 'returns', 'inventory_adjustments'];
+    for (const table of insertOrder) {
       const rows = (await client.query(`SELECT * FROM ${table}`)).rows;
       if (rows.length === 0) continue;
-      sql += `-- Table: ${table}\n`;
-      sql += `TRUNCATE TABLE ${table} CASCADE;\n`;
+      sql += `-- Table: ${table} (${rows.length} rows)\n`;
       for (const row of rows) {
         const cols = Object.keys(row);
         const vals = cols.map(c => {
@@ -742,24 +796,49 @@ async function manualBackup(dbUrl, tmpFile) {
           if (typeof v === 'string') return `'${v.replace(/'/g, "''")}'`;
           if (typeof v === 'boolean') return v ? 'TRUE' : 'FALSE';
           if (v instanceof Date) return `'${v.toISOString()}'`;
-          return v;
+          if (typeof v === 'number') return v;
+          if (typeof v === 'object') return `'${JSON.stringify(v).replace(/'/g, "''")}'`;
+          return `'${String(v).replace(/'/g, "''")}'`;
         });
         sql += `INSERT INTO ${table} (${cols.join(', ')}) VALUES (${vals.join(', ')});\n`;
       }
       sql += '\n';
     }
+    sql += 'SET session_replication_role = origin;\n';
     fs.writeFileSync(tmpFile, sql);
   } finally { client.release(); }
+}
+
+function splitSqlStatements(sql) {
+  const statements = [];
+  let current = '';
+  let inSingleQuote = false;
+  let inDoubleQuote = false;
+  for (let i = 0; i < sql.length; i++) {
+    const ch = sql[i];
+    if (ch === "'" && !inDoubleQuote) {
+      if (inSingleQuote && sql[i + 1] === "'") { current += "''"; i++; }
+      else inSingleQuote = !inSingleQuote;
+    } else if (ch === '"' && !inSingleQuote) {
+      inDoubleQuote = !inDoubleQuote;
+    }
+    if (ch === ';' && !inSingleQuote && !inDoubleQuote) {
+      const trimmed = current.trim();
+      if (trimmed && !trimmed.startsWith('--')) statements.push(trimmed);
+      current = '';
+    } else {
+      current += ch;
+    }
+  }
+  const trimmed = current.trim();
+  if (trimmed && !trimmed.startsWith('--')) statements.push(trimmed);
+  return statements;
 }
 
 app.post('/api/backup/restore', auth, ensureDb, upload.single('backup'), async (req, res) => {
   try {
     if (!req.file) return res.status(400).json({ error: 'No backup file uploaded' });
 
-    const dbUrl = process.env.DATABASE_URL;
-    if (!dbUrl) return res.status(500).json({ error: 'Database URL not configured' });
-
-    // Read the uploaded SQL file
     const sqlContent = fs.readFileSync(req.file.path, 'utf8');
     fs.unlinkSync(req.file.path);
 
@@ -767,21 +846,23 @@ app.post('/api/backup/restore', auth, ensureDb, upload.single('backup'), async (
       return res.status(400).json({ error: 'Backup file is empty' });
     }
 
-    // Execute the SQL to restore
     const pool = await getPool();
     const client = await pool.connect();
     try {
       await client.query('BEGIN');
-      // Split by semicolons and execute each statement
-      const statements = sqlContent.split(';').filter(s => s.trim().length > 0);
+      const statements = splitSqlStatements(sqlContent);
+      let failed = 0;
       for (const stmt of statements) {
-        const trimmed = stmt.trim();
-        if (!trimmed || trimmed.startsWith('--')) continue;
         try {
-          await client.query(trimmed);
+          await client.query(stmt);
         } catch (e) {
-          console.error('Restore statement error:', e.message, trimmed.substring(0, 100));
+          failed++;
+          console.error('Restore statement error:', e.message, stmt.substring(0, 100));
         }
+      }
+      if (failed > 0) {
+        await client.query('ROLLBACK');
+        return res.status(400).json({ error: `Restore failed: ${failed} statements had errors. Database was not modified.` });
       }
       await client.query('COMMIT');
     } catch (e) {
@@ -804,7 +885,7 @@ app.use((req, res) => {
 });
 
 // Graceful shutdown
-process.on('SIGTERM', () => { console.log('SIGTERM received'); process.exit(0); });
-process.on('SIGINT', () => { console.log('SIGINT received'); process.exit(0); });
+process.on('SIGTERM', async () => { console.log('SIGTERM received'); const p = await getPool().catch(() => null); if (p) await p.end(); process.exit(0); });
+process.on('SIGINT', async () => { console.log('SIGINT received'); const p = await getPool().catch(() => null); if (p) await p.end(); process.exit(0); });
 
 app.listen(PORT, () => { console.log(`Karobar server running on port ${PORT}`); });
