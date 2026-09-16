@@ -1,24 +1,26 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import { useI18n } from '../context/I18nContext';
+import { useToast } from '../components/Toast';
 import { Store, Eye, EyeOff } from 'lucide-react';
 
 export default function Login() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
-  const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const { login } = useAuth();
+  const { t } = useI18n();
+  const { toast } = useToast();
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setError('');
     setLoading(true);
     try {
       await login(email, password);
     } catch (err: any) {
-      setError(err.message || 'Login failed');
+      toast('error', err.message || t.error);
     } finally {
       setLoading(false);
     }
@@ -36,15 +38,11 @@ export default function Login() {
         </div>
 
         <div className="card">
-          <h2 className="text-xl font-semibold text-gray-900 mb-6">Welcome back</h2>
-
-          {error && (
-            <div className="mb-4 p-3 bg-red-50 text-red-700 rounded-lg text-sm">{error}</div>
-          )}
+          <h2 className="text-xl font-semibold text-gray-900 mb-6">{t.welcomeBack}</h2>
 
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
-              <label className="label">Email</label>
+              <label className="label">{t.email}</label>
               <input
                 type="email"
                 value={email}
@@ -55,7 +53,7 @@ export default function Login() {
               />
             </div>
             <div>
-              <label className="label">Password</label>
+              <label className="label">{t.password}</label>
               <div className="relative">
                 <input
                   type={showPassword ? 'text' : 'password'}
@@ -71,13 +69,13 @@ export default function Login() {
               </div>
             </div>
             <button type="submit" disabled={loading} className="btn-primary w-full py-3 text-base">
-              {loading ? 'Signing in...' : 'Sign In'}
+              {loading ? t.signingIn : t.signIn}
             </button>
           </form>
 
           <p className="text-center text-sm text-gray-500 mt-6">
-            Don't have an account?{' '}
-            <Link to="/register" className="text-primary-600 font-medium hover:text-primary-700">Create one</Link>
+            {t.alreadyHaveAccount}{' '}
+            <Link to="/register" className="text-primary-600 font-medium hover:text-primary-700">{t.createOne}</Link>
           </p>
         </div>
       </div>

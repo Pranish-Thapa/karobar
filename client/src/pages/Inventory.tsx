@@ -1,57 +1,100 @@
 import { useState, useEffect, useRef } from 'react';
 import { Search, Plus, Package, Edit, Trash2, X, AlertTriangle, Upload, Download, ArrowUpDown } from 'lucide-react';
 import { api } from '../lib/api';
+import { formatCurrency, debounce } from '../lib/utils';
 import { useI18n } from '../context/I18nContext';
+import { useToast } from '../components/Toast';
+import Pagination from '../components/Pagination';
 import ConfirmDialog from '../components/ConfirmDialog';
 import UndoToast from '../components/UndoToast';
 
-function formatCurrency(amount: number) { return `Rs. ${amount.toLocaleString('en-IN', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`; }
+const PAGE_SIZE = 20;
 const emptyForm = { name: '', sku: '', category: 'General', actual_price: '', selling_price: '', stock: '', low_stock_threshold: '5', unit: 'pcs', description: '' };
 
 export default function Inventory() {
   const { t } = useI18n();
+  const { toast } = useToast();
   const [products, setProducts] = useState<any[]>([]);
+  const [total, setTotal] = useState(0);
+  const [page, setPage] = useState(1);
   const [search, setSearch] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
   const [showModal, setShowModal] = useState(false);
   const [editProduct, setEditProduct] = useState<any>(null);
   const [loading, setLoading] = useState(true);
+  const [submitting, setSubmitting] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [importing, setImporting] = useState(false);
+  const [adjusting, setAdjusting] = useState(false);
   const [form, setForm] = useState(emptyForm);
   const [error, setError] = useState('');
   const [categories, setCategories] = useState<string[]>([]);
   const [confirmDelete, setConfirmDelete] = useState<{ id: string; name: string } | null>(null);
   const [undoMsg, setUndoMsg] = useState('');
   const [undoFn, setUndoFn] = useState<(() => void) | null>(null);
-  // CSV Import
   const [showImport, setShowImport] = useState(false);
   const [csvData, setCsvData] = useState<any[]>([]);
   const [csvErrors, setCsvErrors] = useState<{ row: number; reason: string }[]>([]);
   const [importResult, setImportResult] = useState<any>(null);
   const fileRef = useRef<HTMLInputElement>(null);
-  // Stock Adjustment
   const [showAdjust, setShowAdjust] = useState(false);
   const [adjustProduct, setAdjustProduct] = useState<any>(null);
   const [adjustAmount, setAdjustAmount] = useState('');
   const [adjustReason, setAdjustReason] = useState('');
 
-  const loadProducts = () => { api.products.list(search).then(setProducts).finally(() => setLoading(false)); };
-  useEffect(() => { loadProducts(); }, [search]);
+  const debouncedSetSearch = useRef(debounce((val: string) => { setDebouncedSearch(val); }, 300)).current;
+
+  useEffect(() => { debouncedSetSearch(search); }, [search]);
+
+  const loadProducts = async () => {
+    try {
+      setLoading(true);
+      const result = await api.products.list(debouncedSearch, undefined, page, PAGE_SIZE);
+      setProducts(result.data);
+      setTotal(result.total);
+    } catch (err: any) {
+      toast('error', err.message || 'Failed to load products');
+    } finally {
+      setLoading(false);
+    }
+  };
+  useEffect(() => { loadProducts(); }, [debouncedSearch, page]);
   useEffect(() => { api.categories.list().then(setCategories); }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault(); setError('');
     const data = { ...form, actual_price: parseFloat(form.actual_price) || 0, selling_price: parseFloat(form.selling_price) || 0, stock: parseInt(form.stock) || 0, low_stock_threshold: parseInt(form.low_stock_threshold) || 5 };
-    try { if (editProduct) { await api.products.update(editProduct.id, data); } else { await api.products.create(data); } setShowModal(false); setEditProduct(null); setForm(emptyForm); loadProducts(); } catch (err: any) { setError(err.message); }
+    try {
+      setSubmitting(true);
+      if (editProduct) { await api.products.update(editProduct.id, data); } else { await api.products.create(data); }
+      setShowModal(false); setEditProduct(null); setForm(emptyForm);
+      toast('success', editProduct ? 'Product updated' : 'Product added');
+      loadProducts();
+    } catch (err: any) {
+      setError(err.message);
+      toast('error', err.message || 'Failed to save product');
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   const handleDelete = async (id: string, name: string) => { setConfirmDelete({ id, name }); };
   const doDelete = async () => {
     if (!confirmDelete) return;
-    const deleted = products.find(p => p.id === confirmDelete.id);
-    await api.products.delete(confirmDelete.id);
-    setConfirmDelete(null);
-    loadProducts();
-    setUndoMsg(`"${deleted?.name}" deleted`);
-    setUndoFn(() => async () => { if (deleted) { await api.products.create({ name: deleted.name, sku: deleted.sku, category: deleted.category, actual_price: deleted.actual_price, selling_price: deleted.selling_price, stock: deleted.stock, low_stock_threshold: deleted.low_stock_threshold, unit: deleted.unit, description: deleted.description }); loadProducts(); } });
+    try {
+      setDeleting(true);
+      const deleted = products.find(p => p.id === confirmDelete.id);
+      await api.products.delete(confirmDelete.id);
+      setConfirmDelete(null);
+      loadProducts();
+      toast('success', `"${deleted?.name}" deleted`);
+      setUndoMsg(`"${deleted?.name}" deleted`);
+      setUndoFn(() => async () => { if (deleted) { try { await api.products.create({ name: deleted.name, sku: deleted.sku, category: deleted.category, actual_price: deleted.actual_price, selling_price: deleted.selling_price, stock: deleted.stock, low_stock_threshold: deleted.low_stock_threshold, unit: deleted.unit, description: deleted.description }); loadProducts(); } catch (err: any) { toast('error', 'Failed to restore product'); } } });
+    } catch (err: any) {
+      toast('error', err.message || 'Failed to delete product');
+    } finally {
+      setDeleting(false);
+    }
   };
 
   const openEdit = (product: any) => { setEditProduct(product); setForm({ name: product.name, sku: product.sku || '', category: product.category || 'General', actual_price: String(product.actual_price), selling_price: String(product.selling_price), stock: String(product.stock), low_stock_threshold: String(product.low_stock_threshold), unit: product.unit || 'pcs', description: product.description || '' }); setShowModal(true); };
@@ -90,7 +133,17 @@ export default function Inventory() {
   };
 
   const doImport = async () => {
-    try { const result = await api.products.import(csvData); setImportResult(result); setCsvData([]); setCsvErrors([]); loadProducts(); } catch (err: any) { alert(err.message); }
+    try {
+      setImporting(true);
+      const result = await api.products.import(csvData);
+      setImportResult(result); setCsvData([]); setCsvErrors([]);
+      toast('success', `Imported ${result.imported} products`);
+      loadProducts();
+    } catch (err: any) {
+      toast('error', err.message || 'Failed to import products');
+    } finally {
+      setImporting(false);
+    }
   };
 
   const downloadTemplate = () => {
@@ -103,13 +156,23 @@ export default function Inventory() {
     e.preventDefault();
     const adj = parseInt(adjustAmount);
     if (!adj || adj === 0) return;
-    try { await api.inventory.adjust({ product_id: adjustProduct.id, adjustment: adj, reason: adjustReason || 'Manual adjustment' }); setShowAdjust(false); setAdjustProduct(null); setAdjustAmount(''); setAdjustReason(''); loadProducts(); } catch (err: any) { alert(err.message); }
+    try {
+      setAdjusting(true);
+      await api.inventory.adjust({ product_id: adjustProduct.id, adjustment: adj, reason: adjustReason || 'Manual adjustment' });
+      setShowAdjust(false); setAdjustProduct(null); setAdjustAmount(''); setAdjustReason('');
+      toast('success', 'Stock adjusted');
+      loadProducts();
+    } catch (err: any) {
+      toast('error', err.message || 'Failed to adjust stock');
+    } finally {
+      setAdjusting(false);
+    }
   };
 
   return (
     <div className="pb-20 lg:pb-0">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
-        <div><h1 className="text-2xl font-bold text-gray-900 dark:text-white">{t.inventory}</h1><p className="text-gray-500 text-sm">{products.length} {t.inventory}</p></div>
+        <div><h1 className="text-2xl font-bold text-gray-900 dark:text-white">{t.inventory}</h1><p className="text-gray-500 text-sm">{total} {t.inventory}</p></div>
         <div className="flex gap-2">
           <button onClick={() => { setEditProduct(null); setForm(emptyForm); setShowModal(true); }} className="btn-primary flex items-center gap-2"><Plus className="w-4 h-4" /> {t.addProduct}</button>
           <button onClick={() => { setShowImport(true); setCsvData([]); setCsvErrors([]); setImportResult(null); if (fileRef.current) fileRef.current.value = ''; }} className="btn-secondary flex items-center gap-2"><Upload className="w-4 h-4" /> {t.importCSV}</button>
@@ -136,12 +199,13 @@ export default function Inventory() {
             <div className="flex gap-1 ml-2">
               <button onClick={() => { setAdjustProduct(product); setAdjustAmount(''); setAdjustReason(''); setShowAdjust(true); }} className="p-2 text-gray-400 hover:text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded-lg" title={t.adjustStock}><ArrowUpDown className="w-4 h-4" /></button>
               <button onClick={() => openEdit(product)} className="p-2 text-gray-400 hover:text-primary-600 hover:bg-primary-50 dark:hover:bg-primary-900/20 rounded-lg"><Edit className="w-4 h-4" /></button>
-              <button onClick={() => handleDelete(product.id, product.name)} className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg"><Trash2 className="w-4 h-4" /></button>
+              <button onClick={() => handleDelete(product.id, product.name)} disabled={deleting} className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg disabled:opacity-40"><Trash2 className="w-4 h-4" /></button>
             </div>
           </div>
         </div>); })}</div>}
 
-      {/* Add/Edit Modal */}
+      {!loading && products.length > 0 && <Pagination page={page} total={total} limit={PAGE_SIZE} onChange={setPage} />}
+
       {showModal && <div className="fixed inset-0 z-50 bg-black/50 flex items-end sm:items-center justify-center p-0 sm:p-4"><div className="bg-white dark:bg-gray-800 rounded-t-2xl sm:rounded-2xl w-full sm:max-w-lg max-h-[90vh] overflow-y-auto">
         <div className="flex items-center justify-between p-4 border-b dark:border-gray-600 sticky top-0 bg-white dark:bg-gray-800"><h2 className="text-lg font-semibold text-gray-900 dark:text-white">{editProduct ? t.editProduct : t.addProduct}</h2><button onClick={() => { setShowModal(false); setEditProduct(null); }} className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg"><X className="w-5 h-5" /></button></div>
         {error && <div className="mx-4 mt-4 p-3 bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-300 rounded-lg text-sm">{error}</div>}
@@ -151,11 +215,10 @@ export default function Inventory() {
           <div className="grid grid-cols-2 gap-4"><div><label className="label">{t.costPrice} (Rs.) *</label><input type="number" value={form.actual_price} onChange={e => setForm({...form, actual_price: e.target.value})} className="input" min="0" step="0.01" required /></div><div><label className="label">{t.sellingPrice} (Rs.) *</label><input type="number" value={form.selling_price} onChange={e => setForm({...form, selling_price: e.target.value})} className="input" min="0" step="0.01" required /></div></div>
           <div className="grid grid-cols-3 gap-4"><div><label className="label">{t.stock} *</label><input type="number" value={form.stock} onChange={e => setForm({...form, stock: e.target.value})} className="input" min="0" required /></div><div><label className="label">{t.lowStockAt}</label><input type="number" value={form.low_stock_threshold} onChange={e => setForm({...form, low_stock_threshold: e.target.value})} className="input" min="0" /></div><div><label className="label">{t.unit}</label><input type="text" value={form.unit} onChange={e => setForm({...form, unit: e.target.value})} className="input" placeholder="pcs, kg, L" /></div></div>
           <div><label className="label">{t.description}</label><textarea value={form.description} onChange={e => setForm({...form, description: e.target.value})} className="input" rows={2} placeholder={t.optional} /></div>
-          <div className="flex gap-3 pt-2"><button type="button" onClick={() => { setShowModal(false); setEditProduct(null); }} className="btn-secondary flex-1">{t.cancel}</button><button type="submit" className="btn-primary flex-1">{editProduct ? t.save : t.addProduct}</button></div>
+          <div className="flex gap-3 pt-2"><button type="button" onClick={() => { setShowModal(false); setEditProduct(null); }} className="btn-secondary flex-1">{t.cancel}</button><button type="submit" disabled={submitting} className="btn-primary flex-1">{submitting ? t.loading : editProduct ? t.save : t.addProduct}</button></div>
         </form>
       </div></div>}
 
-      {/* CSV Import Modal */}
       {showImport && <div className="fixed inset-0 z-50 bg-black/50 flex items-end sm:items-center justify-center p-0 sm:p-4"><div className="bg-white dark:bg-gray-800 rounded-t-2xl sm:rounded-2xl w-full sm:max-w-lg max-h-[90vh] overflow-y-auto">
         <div className="flex items-center justify-between p-4 border-b dark:border-gray-600 sticky top-0 bg-white dark:bg-gray-800"><h2 className="text-lg font-semibold text-gray-900 dark:text-white">{t.importCSV}</h2><button onClick={() => setShowImport(false)} className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg"><X className="w-5 h-5" /></button></div>
         <div className="p-4 space-y-4">
@@ -172,20 +235,19 @@ export default function Inventory() {
                 {csvData.map((p, i) => <div key={i} className="text-sm p-2 bg-green-50 dark:bg-green-900/20 rounded flex justify-between"><span>{p.name}</span><span>{formatCurrency(p.selling_price)}</span></div>)}
                 {csvErrors.map((e, i) => <div key={i} className="text-sm p-2 bg-red-50 dark:bg-red-900/20 rounded text-red-700 dark:text-red-300">Row {e.row}: {e.reason}</div>)}
               </div>
-              {csvData.length > 0 && <button onClick={doImport} className="btn-primary w-full mt-3">{t.confirmImport} ({csvData.length})</button>}
+              {csvData.length > 0 && <button onClick={doImport} disabled={importing} className="btn-primary w-full mt-3">{importing ? t.loading : t.confirmImport} ({csvData.length})</button>}
             </div>
           )}
         </div>
       </div></div>}
 
-      {/* Stock Adjustment Modal */}
       {showAdjust && adjustProduct && <div className="fixed inset-0 z-50 bg-black/50 flex items-end sm:items-center justify-center p-0 sm:p-4"><div className="bg-white dark:bg-gray-800 rounded-t-2xl sm:rounded-2xl w-full sm:max-w-md">
         <div className="flex items-center justify-between p-4 border-b dark:border-gray-600"><h2 className="text-lg font-semibold text-gray-900 dark:text-white">{t.adjustStock}: {adjustProduct.name}</h2><button onClick={() => setShowAdjust(false)} className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg"><X className="w-5 h-5" /></button></div>
         <form onSubmit={handleAdjust} className="p-4 space-y-4">
           <p className="text-sm text-gray-500">{t.stock}: {adjustProduct.stock}</p>
           <div><label className="label">{t.adjust} ({t.addStock} positive, {t.removeStock} negative)</label><input type="number" value={adjustAmount} onChange={e => setAdjustAmount(e.target.value)} className="input" required placeholder="+10 or -5" /></div>
           <div><label className="label">{t.adjustmentReason}</label><input type="text" value={adjustReason} onChange={e => setAdjustReason(e.target.value)} className="input" placeholder={t.adjustmentReason} /></div>
-          <div className="flex gap-3"><button type="button" onClick={() => setShowAdjust(false)} className="btn-secondary flex-1">{t.cancel}</button><button type="submit" className="btn-primary flex-1">{t.adjust}</button></div>
+          <div className="flex gap-3"><button type="button" onClick={() => setShowAdjust(false)} className="btn-secondary flex-1">{t.cancel}</button><button type="submit" disabled={adjusting} className="btn-primary flex-1">{adjusting ? t.loading : t.adjust}</button></div>
         </form>
       </div></div>}
 

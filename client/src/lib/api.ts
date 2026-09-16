@@ -14,6 +14,22 @@ async function request(path: string, options: RequestInit = {}) {
   return data;
 }
 
+export interface PaginatedResponse<T> {
+  data: T[];
+  total: number;
+  page: number;
+  limit: number;
+}
+
+function paginate(path: string, page?: number, limit?: number, extra?: Record<string, string>) {
+  const sp = new URLSearchParams();
+  if (page) sp.set('page', String(page));
+  if (limit) sp.set('limit', String(limit));
+  if (extra) Object.entries(extra).forEach(([k, v]) => { if (v) sp.set(k, v); });
+  const qs = sp.toString();
+  return request(`${path}${qs ? `?${qs}` : ''}`);
+}
+
 export const api = {
   auth: {
     register: (data: { name: string; email: string; password: string; shopName?: string }) => request('/auth/register', { method: 'POST', body: JSON.stringify(data) }),
@@ -22,7 +38,7 @@ export const api = {
   },
   dashboard: { get: () => request('/dashboard') },
   customers: {
-    list: (search?: string) => request(`/customers${search ? `?search=${encodeURIComponent(search)}` : ''}`),
+    list: (search?: string, page?: number, limit?: number) => paginate('/customers', page, limit, search ? { search } : undefined),
     get: (id: string) => request(`/customers/${id}`),
     create: (data: any) => request('/customers', { method: 'POST', body: JSON.stringify(data) }),
     update: (id: string, data: any) => request(`/customers/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
@@ -30,11 +46,11 @@ export const api = {
     addPayment: (id: string, data: any) => request(`/customers/${id}/payments`, { method: 'POST', body: JSON.stringify(data) }),
   },
   products: {
-    list: (search?: string, category?: string) => {
-      const params = new URLSearchParams();
-      if (search) params.set('search', search);
-      if (category) params.set('category', category);
-      return request(`/products${params.toString() ? `?${params}` : ''}`);
+    list: (search?: string, category?: string, page?: number, limit?: number) => {
+      const extra: Record<string, string> = {};
+      if (search) extra.search = search;
+      if (category) extra.category = category;
+      return paginate('/products', page, limit, Object.keys(extra).length ? extra : undefined);
     },
     get: (id: string) => request(`/products/${id}`),
     create: (data: any) => request('/products', { method: 'POST', body: JSON.stringify(data) }),
@@ -43,19 +59,20 @@ export const api = {
     import: (products: any[]) => request('/products/import', { method: 'POST', body: JSON.stringify({ products }) }),
   },
   orders: {
-    list: (status?: string) => request(`/orders${status ? `?status=${status}` : ''}`),
+    list: (status?: string, page?: number, limit?: number) => paginate('/orders', page, limit, status ? { status } : undefined),
     get: (id: string) => request(`/orders/${id}`),
     create: (data: any) => request('/orders', { method: 'POST', body: JSON.stringify(data) }),
     update: (id: string, data: any) => request(`/orders/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
     complete: (id: string) => request(`/orders/${id}/complete`, { method: 'POST' }),
   },
   sales: {
-    list: (params?: { search?: string; from?: string; to?: string; customer_id?: string }) => {
+    list: (params?: { search?: string; from?: string; to?: string; page?: number; limit?: number }) => {
       const sp = new URLSearchParams();
       if (params?.search) sp.set('search', params.search);
       if (params?.from) sp.set('from', params.from);
       if (params?.to) sp.set('to', params.to);
-      if (params?.customer_id) sp.set('customer_id', params.customer_id);
+      if (params?.page) sp.set('page', String(params.page));
+      if (params?.limit) sp.set('limit', String(params.limit));
       return request(`/sales${sp.toString() ? `?${sp}` : ''}`);
     },
     create: (data: any) => request('/sales', { method: 'POST', body: JSON.stringify(data) }),

@@ -4,46 +4,50 @@ import { TrendingUp, TrendingDown, DollarSign, ShoppingCart, Users, Package, Ale
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, LineChart, Line } from 'recharts';
 import { api } from '../lib/api';
 import { useAuth } from '../context/AuthContext';
-
-function formatCurrency(amount: number) {
-  return `Rs. ${amount.toLocaleString('en-IN', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`;
-}
+import { useI18n } from '../context/I18nContext';
+import { formatCurrency, formatDate } from '../lib/utils';
+import { useToast } from '../components/Toast';
 
 export default function Dashboard() {
   const { user } = useAuth();
+  const { t } = useI18n();
+  const { toast } = useToast();
   const [data, setData] = useState<any>(null);
   const [chartPeriod, setChartPeriod] = useState<'7d' | '30d'>('7d');
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    api.dashboard.get().then(setData).finally(() => setLoading(false));
+    api.dashboard.get().then(setData).catch(() => {
+      toast('error', t.dashboard);
+    }).finally(() => setLoading(false));
   }, []);
 
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64">
         <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary-600"></div>
+        <span className="ml-3 text-gray-500">{t.loading}</span>
       </div>
     );
   }
 
-  if (!data) return <div className="text-center py-8 text-gray-500">Failed to load dashboard</div>;
+  if (!data) return <div className="text-center py-8 text-gray-500">{t.dashboard}</div>;
 
   const salesData = chartPeriod === '7d' ? data.salesLast7 : data.salesLast30;
   const profitData = chartPeriod === '7d' ? data.profitLast7 : data.profitLast30;
 
   const greeting = () => {
     const hour = new Date().getHours();
-    if (hour < 12) return 'Good Morning';
-    if (hour < 17) return 'Good Afternoon';
-    return 'Good Evening';
+    if (hour < 12) return t.goodMorning;
+    if (hour < 17) return t.goodAfternoon;
+    return t.goodEvening;
   };
 
   return (
     <div className="pb-20 lg:pb-0">
       <div className="mb-8">
         <h1 className="text-2xl lg:text-3xl font-bold text-gray-900">{greeting()} 👋</h1>
-        <p className="text-gray-500 mt-1">Here's what's happening with your shop</p>
+        <p className="text-gray-500 mt-1">{t.shopOverview}</p>
       </div>
 
       {/* Stats Cards */}
@@ -53,7 +57,7 @@ export default function Dashboard() {
             <div className="w-10 h-10 bg-green-100 rounded-lg flex items-center justify-center">
               <DollarSign className="w-5 h-5 text-green-600" />
             </div>
-            <span className="text-sm font-medium text-gray-500">Today's Sales</span>
+            <span className="text-sm font-medium text-gray-500">{t.todaysSales}</span>
           </div>
           <p className="text-2xl font-bold text-gray-900">{formatCurrency(data.todaySales)}</p>
         </div>
@@ -63,7 +67,7 @@ export default function Dashboard() {
             <div className="w-10 h-10 bg-primary-100 rounded-lg flex items-center justify-center">
               <TrendingUp className="w-5 h-5 text-primary-600" />
             </div>
-            <span className="text-sm font-medium text-gray-500">Today's Profit</span>
+            <span className="text-sm font-medium text-gray-500">{t.todaysProfit}</span>
           </div>
           <p className="text-2xl font-bold text-primary-600">{formatCurrency(data.todayProfit)}</p>
         </div>
@@ -73,7 +77,7 @@ export default function Dashboard() {
             <div className="w-10 h-10 bg-yellow-100 rounded-lg flex items-center justify-center">
               <Users className="w-5 h-5 text-yellow-600" />
             </div>
-            <span className="text-sm font-medium text-gray-500">Pending Dues</span>
+            <span className="text-sm font-medium text-gray-500">{t.pendingDues}</span>
           </div>
           <p className="text-2xl font-bold text-yellow-600">{formatCurrency(data.pendingDues)}</p>
         </div>
@@ -83,7 +87,7 @@ export default function Dashboard() {
             <div className="w-10 h-10 bg-blue-100 rounded-lg flex items-center justify-center">
               <Package className="w-5 h-5 text-blue-600" />
             </div>
-            <span className="text-sm font-medium text-gray-500">Inventory Value</span>
+            <span className="text-sm font-medium text-gray-500">{t.inventoryValue}</span>
           </div>
           <p className="text-2xl font-bold text-gray-900">{formatCurrency(data.inventoryValue)}</p>
         </div>
@@ -93,7 +97,7 @@ export default function Dashboard() {
             <div className="w-10 h-10 bg-red-100 rounded-lg flex items-center justify-center">
               <AlertTriangle className="w-5 h-5 text-red-600" />
             </div>
-            <span className="text-sm font-medium text-gray-500">Low Stock Items</span>
+            <span className="text-sm font-medium text-gray-500">{t.lowStockItems}</span>
           </div>
           <p className="text-2xl font-bold text-red-600">{data.lowStockCount}</p>
         </div>
@@ -103,7 +107,7 @@ export default function Dashboard() {
             <div className="w-10 h-10 bg-purple-100 rounded-lg flex items-center justify-center">
               <Clock className="w-5 h-5 text-purple-600" />
             </div>
-            <span className="text-sm font-medium text-gray-500">Upcoming Orders</span>
+            <span className="text-sm font-medium text-gray-500">{t.upcomingOrders}</span>
           </div>
           <p className="text-2xl font-bold text-gray-900">{data.upcomingOrders}</p>
           {data.upcomingOrdersValue > 0 && (
@@ -116,7 +120,7 @@ export default function Dashboard() {
       <div className="grid lg:grid-cols-2 gap-6 mb-8">
         <div className="card">
           <div className="flex items-center justify-between mb-4">
-            <h3 className="font-semibold text-gray-900">Sales Overview</h3>
+            <h3 className="font-semibold text-gray-900">{t.salesOverview}</h3>
             <div className="flex gap-1 bg-gray-100 rounded-lg p-1">
               <button onClick={() => setChartPeriod('7d')} className={`px-3 py-1 text-xs font-medium rounded-md transition-colors ${chartPeriod === '7d' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500'}`}>7D</button>
               <button onClick={() => setChartPeriod('30d')} className={`px-3 py-1 text-xs font-medium rounded-md transition-colors ${chartPeriod === '30d' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500'}`}>30D</button>
@@ -134,14 +138,14 @@ export default function Dashboard() {
                 </BarChart>
               </ResponsiveContainer>
             ) : (
-              <div className="h-full flex items-center justify-center text-gray-400 text-sm">No sales data yet</div>
+              <div className="h-full flex items-center justify-center text-gray-400 text-sm">{t.noSalesYet}</div>
             )}
           </div>
         </div>
 
         <div className="card">
           <div className="flex items-center justify-between mb-4">
-            <h3 className="font-semibold text-gray-900">Profit Overview</h3>
+            <h3 className="font-semibold text-gray-900">{t.profitOverview}</h3>
             <div className="flex gap-1 bg-gray-100 rounded-lg p-1">
               <button onClick={() => setChartPeriod('7d')} className={`px-3 py-1 text-xs font-medium rounded-md transition-colors ${chartPeriod === '7d' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500'}`}>7D</button>
               <button onClick={() => setChartPeriod('30d')} className={`px-3 py-1 text-xs font-medium rounded-md transition-colors ${chartPeriod === '30d' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500'}`}>30D</button>
@@ -159,7 +163,7 @@ export default function Dashboard() {
                 </LineChart>
               </ResponsiveContainer>
             ) : (
-              <div className="h-full flex items-center justify-center text-gray-400 text-sm">No profit data yet</div>
+              <div className="h-full flex items-center justify-center text-gray-400 text-sm">{t.noSalesYet}</div>
             )}
           </div>
         </div>
@@ -172,10 +176,10 @@ export default function Dashboard() {
             <div className="flex items-center justify-between mb-4">
               <h3 className="font-semibold text-gray-900 flex items-center gap-2">
                 <AlertTriangle className="w-4 h-4 text-red-500" />
-                Low Stock
+                {t.lowStock}
               </h3>
               <Link to="/inventory" className="text-sm text-primary-600 hover:text-primary-700 flex items-center gap-1">
-                View all <ArrowRight className="w-3 h-3" />
+                {t.viewAll} <ArrowRight className="w-3 h-3" />
               </Link>
             </div>
             <div className="space-y-3">
@@ -185,7 +189,7 @@ export default function Dashboard() {
                     <p className="font-medium text-gray-900 text-sm">{p.name}</p>
                     <p className="text-xs text-gray-500">Threshold: {p.low_stock_threshold}</p>
                   </div>
-                  <span className="badge badge-danger">{p.stock} remaining</span>
+                  <span className="badge badge-danger">{p.stock} {t.remaining}</span>
                 </div>
               ))}
             </div>
@@ -194,9 +198,9 @@ export default function Dashboard() {
 
         <div className="card">
           <div className="flex items-center justify-between mb-4">
-            <h3 className="font-semibold text-gray-900">Recent Sales</h3>
+            <h3 className="font-semibold text-gray-900">{t.recentSales}</h3>
             <Link to="/sales" className="text-sm text-primary-600 hover:text-primary-700 flex items-center gap-1">
-              View all <ArrowRight className="w-3 h-3" />
+              {t.viewAll} <ArrowRight className="w-3 h-3" />
             </Link>
           </div>
           {data.recentSales.length > 0 ? (
@@ -209,7 +213,7 @@ export default function Dashboard() {
                   </div>
                   <div className="text-right">
                     <p className="font-semibold text-gray-900 text-sm">{formatCurrency(sale.total_amount)}</p>
-                    <p className="text-xs text-primary-600">+{formatCurrency(sale.profit)} profit</p>
+                    <p className="text-xs text-primary-600">+{formatCurrency(sale.profit)}</p>
                   </div>
                 </div>
               ))}
@@ -217,7 +221,7 @@ export default function Dashboard() {
           ) : (
             <div className="text-center py-8 text-gray-400 text-sm">
               <ShoppingCart className="w-8 h-8 mx-auto mb-2 opacity-50" />
-              <p>No sales yet</p>
+              <p>{t.noSalesYet}</p>
             </div>
           )}
         </div>

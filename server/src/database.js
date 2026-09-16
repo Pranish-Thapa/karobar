@@ -4,17 +4,15 @@ let pool = null;
 
 async function getPool() {
   if (pool) return pool;
-
   const connectionString = process.env.DATABASE_URL;
-  if (!connectionString) {
-    throw new Error('DATABASE_URL environment variable is not set');
-  }
-
+  if (!connectionString) throw new Error('DATABASE_URL environment variable is not set');
   pool = new Pool({
     connectionString,
     ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false,
+    max: 20,
+    idleTimeoutMillis: 30000,
+    connectionTimeoutMillis: 10000,
   });
-
   await initTables();
   return pool;
 }
@@ -22,6 +20,7 @@ async function getPool() {
 async function initTables() {
   const client = await pool.connect();
   try {
+    await client.query('BEGIN');
     await client.query(`
       CREATE TABLE IF NOT EXISTS users (
         id TEXT PRIMARY KEY, name TEXT NOT NULL, email TEXT UNIQUE NOT NULL,
@@ -30,6 +29,7 @@ async function initTables() {
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       )
     `);
+    await client.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS language TEXT DEFAULT 'en'`).catch(() => {});
     await client.query(`
       CREATE TABLE IF NOT EXISTS qr_tokens (
         id TEXT PRIMARY KEY, user_id TEXT NOT NULL, token TEXT UNIQUE NOT NULL,
@@ -150,8 +150,36 @@ async function initTables() {
         FOREIGN KEY (product_id) REFERENCES products(id)
       )
     `);
-    // Migration
-    await client.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS language TEXT DEFAULT 'en'`).catch(() => {});
+
+    // Indexes
+    const indexes = [
+      'CREATE INDEX IF NOT EXISTS idx_customers_user ON customers(user_id)',
+      'CREATE INDEX IF NOT EXISTS idx_customers_user_name ON customers(user_id, name)',
+      'CREATE INDEX IF NOT EXISTS idx_products_user ON products(user_id)',
+      'CREATE INDEX IF NOT EXISTS idx_products_user_category ON products(user_id, category)',
+      'CREATE INDEX IF NOT EXISTS idx_products_user_name ON products(user_id, name)',
+      'CREATE INDEX IF NOT EXISTS idx_orders_user ON orders(user_id)',
+      'CREATE INDEX IF NOT EXISTS idx_orders_user_status ON orders(user_id, status)',
+      'CREATE INDEX IF NOT EXISTS idx_order_items_order ON order_items(order_id)',
+      'CREATE INDEX IF NOT EXISTS idx_sales_user ON sales(user_id)',
+      'CREATE INDEX IF NOT EXISTS idx_sales_user_date ON sales(user_id, sale_date)',
+      'CREATE INDEX IF NOT EXISTS idx_sales_customer ON sales(customer_id)',
+      'CREATE INDEX IF NOT EXISTS idx_sale_items_sale ON sale_items(sale_id)',
+      'CREATE INDEX IF NOT EXISTS idx_customer_payments_customer ON customer_payments(customer_id)',
+      'CREATE INDEX IF NOT EXISTS idx_notifications_user_read ON notifications(user_id, read)',
+      'CREATE INDEX IF NOT EXISTS idx_notifications_user_entity ON notifications(user_id, entity_id, type, read)',
+      'CREATE INDEX IF NOT EXISTS idx_returns_user ON returns(user_id)',
+      'CREATE INDEX IF NOT EXISTS idx_inventory_adjustments_user ON inventory_adjustments(user_id)',
+      'CREATE INDEX IF NOT EXISTS idx_products_user_sku ON products(user_id, sku)',
+    ];
+    for (const idx of indexes) {
+      await client.query(idx);
+    }
+
+    await client.query('COMMIT');
+  } catch (err) {
+    await client.query('ROLLBACK');
+    throw err;
   } finally {
     client.release();
   }
@@ -171,4 +199,19 @@ async function run(sql, params = []) {
   return await pool.query(sql, params);
 }
 
-module.exports = { getPool, all, get, run };
+async function transaction(callback) {
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const result = await callback(client);
+    await client.query('COMMIT');
+    return result;
+  } catch (err) {
+    await client.query('ROLLBACK');
+    throw err;
+  } finally {
+    client.release();
+  }
+}
+
+module.exports = { getPool, all, get, run, transaction };

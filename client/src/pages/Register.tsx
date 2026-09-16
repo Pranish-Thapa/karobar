@@ -1,6 +1,8 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import { useI18n } from '../context/I18nContext';
+import { useToast } from '../components/Toast';
 import { Store, Eye, EyeOff } from 'lucide-react';
 
 export default function Register() {
@@ -9,18 +11,18 @@ export default function Register() {
   const [password, setPassword] = useState('');
   const [shopName, setShopName] = useState('');
   const [showPassword, setShowPassword] = useState(false);
-  const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const { register } = useAuth();
+  const { t } = useI18n();
+  const { toast } = useToast();
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setError('');
     setLoading(true);
     try {
       await register(name, email, password, shopName || undefined);
     } catch (err: any) {
-      setError(err.message || 'Registration failed');
+      toast('error', err.message || t.error);
     } finally {
       setLoading(false);
     }
@@ -38,27 +40,23 @@ export default function Register() {
         </div>
 
         <div className="card">
-          <h2 className="text-xl font-semibold text-gray-900 mb-6">Create account</h2>
-
-          {error && (
-            <div className="mb-4 p-3 bg-red-50 text-red-700 rounded-lg text-sm">{error}</div>
-          )}
+          <h2 className="text-xl font-semibold text-gray-900 mb-6">{t.createAccount}</h2>
 
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
-              <label className="label">Your Name</label>
+              <label className="label">{t.yourName}</label>
               <input type="text" value={name} onChange={e => setName(e.target.value)} className="input" placeholder="Your name" required />
             </div>
             <div>
-              <label className="label">Shop Name</label>
+              <label className="label">{t.shopNameLabel}</label>
               <input type="text" value={shopName} onChange={e => setShopName(e.target.value)} className="input" placeholder="My Shop" />
             </div>
             <div>
-              <label className="label">Email</label>
+              <label className="label">{t.email}</label>
               <input type="email" value={email} onChange={e => setEmail(e.target.value)} className="input" placeholder="your@email.com" required />
             </div>
             <div>
-              <label className="label">Password</label>
+              <label className="label">{t.password}</label>
               <div className="relative">
                 <input type={showPassword ? 'text' : 'password'} value={password} onChange={e => setPassword(e.target.value)} className="input pr-10" placeholder="Min 6 characters" required minLength={6} />
                 <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
@@ -67,13 +65,13 @@ export default function Register() {
               </div>
             </div>
             <button type="submit" disabled={loading} className="btn-primary w-full py-3 text-base">
-              {loading ? 'Creating account...' : 'Create Account'}
+              {loading ? t.creatingAccount : t.createAccount}
             </button>
           </form>
 
           <p className="text-center text-sm text-gray-500 mt-6">
-            Already have an account?{' '}
-            <Link to="/login" className="text-primary-600 font-medium hover:text-primary-700">Sign in</Link>
+            {t.alreadyHaveAccount}{' '}
+            <Link to="/login" className="text-primary-600 font-medium hover:text-primary-700">{t.signIn}</Link>
           </p>
         </div>
       </div>

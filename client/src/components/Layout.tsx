@@ -126,17 +126,17 @@ export default function Layout({ children }: { children: ReactNode }) {
       </main>
 
       {/* Mobile Bottom Nav */}
-      <nav className="lg:hidden fixed bottom-0 left-0 right-0 z-50 bg-white dark:bg-gray-800 border-t border-gray-200 dark:border-gray-700 safe-bottom">
+      <nav className="lg:hidden fixed bottom-0 left-0 right-0 z-50 bg-white dark:bg-gray-800 border-t border-gray-200 dark:border-gray-700 safe-bottom" aria-label="Bottom navigation">
         <div className="flex justify-around items-center h-16 px-2">
           {navItems.slice(0, 5).map(item => (
-            <Link key={item.path} to={item.path} className={`flex flex-col items-center gap-1 px-2 py-1 rounded-lg text-xs font-medium transition-colors ${location.pathname === item.path ? 'text-primary-600 dark:text-primary-400' : 'text-gray-500 dark:text-gray-400'}`}>
+            <Link key={item.path} to={item.path} aria-current={location.pathname === item.path ? 'page' : undefined} className={`flex flex-col items-center gap-1 px-2 py-1 rounded-lg text-xs font-medium transition-colors ${location.pathname === item.path ? 'text-primary-600 dark:text-primary-400' : 'text-gray-500 dark:text-gray-400'}`}>
               <item.icon className="w-5 h-5" />
               <span>{(t as any)[item.key]?.split(' ')[0]}</span>
             </Link>
           ))}
-          <Link to="/notifications" className={`flex flex-col items-center gap-1 px-2 py-1 rounded-lg text-xs font-medium transition-colors ${location.pathname === '/notifications' || location.pathname === '/settings' ? 'text-primary-600 dark:text-primary-400' : 'text-gray-500 dark:text-gray-400'}`}>
-            <Settings className="w-5 h-5" />
-            <span>{t.settings?.split(' ')[0]}</span>
+          <Link to="/notifications" aria-current={location.pathname === '/notifications' ? 'page' : undefined} className={`flex flex-col items-center gap-1 px-2 py-1 rounded-lg text-xs font-medium transition-colors ${location.pathname === '/notifications' ? 'text-primary-600 dark:text-primary-400' : 'text-gray-500 dark:text-gray-400'}`}>
+            <Bell className="w-5 h-5" />
+            <span>{t.notifications?.split(' ')[0]}</span>
           </Link>
         </div>
       </nav>
