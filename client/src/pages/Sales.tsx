@@ -62,20 +62,21 @@ export default function Sales() {
     return () => { if (debounceTimer.current) clearTimeout(debounceTimer.current); };
   }, []);
 
+  useEffect(() => {
+    api.products.list().then(p => setProducts(p.data || p || [])).catch(() => {});
+    api.customers.list().then(c => setCustomers(c.data || c || [])).catch(() => {});
+  }, []);
+
   const loadData = useCallback(async () => {
     setLoading(true);
     try {
-      const [s, o, c, p] = await Promise.all([
+      const [s, o] = await Promise.all([
         api.sales.list({ search: debouncedSearch, from: dateFrom || undefined, to: dateTo || undefined, page, limit: PAGE_LIMIT }),
         api.orders.list(),
-        api.customers.list(),
-        api.products.list(),
       ]);
       setSales(s.data || []);
       setTotalSales(s.total || 0);
       setOrders(o.data || o || []);
-      setCustomers(c.data || c || []);
-      setProducts(p.data || p || []);
     } catch (err: any) {
       toast('error', err.message);
     } finally {
