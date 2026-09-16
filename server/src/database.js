@@ -242,6 +242,7 @@ async function initTables() {
     // Migrations
     await client.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS last_backup_at TIMESTAMP`).catch(() => {});
     await client.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS vat_registered BOOLEAN DEFAULT FALSE`).catch(() => {});
+    await client.query(`ALTER TABLE business_settings ADD COLUMN IF NOT EXISTS signature_url TEXT DEFAULT ''`).catch(() => {});
 
     await client.query('COMMIT');
   } catch (err) {

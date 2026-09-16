@@ -18,6 +18,7 @@ interface BusinessSnapshot {
   vat_number: string;
   logo_url: string;
   stamp_url: string;
+  signature_url: string;
 }
 
 interface CustomerSnapshot {
@@ -478,9 +479,17 @@ export default function InvoicePreview({ invoice, onClose, onPrint }: InvoicePre
               } mt-8 pt-6 border-t border-gray-200`}
             >
               <div className="text-center">
-                <p className="text-sm text-gray-600 mb-8">
-                  _________________________
-                </p>
+                {invoice.business_snapshot.signature_url ? (
+                  <img
+                    src={invoice.business_snapshot.signature_url}
+                    alt="Seller's Signature"
+                    className="h-12 object-contain mb-2"
+                  />
+                ) : (
+                  <p className="text-sm text-gray-600 mb-8">
+                    _________________________
+                  </p>
+                )}
                 <p className="text-sm font-medium text-gray-700">
                   {getLabel('sellersSignature', bill_language)}
                 </p>

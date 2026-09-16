@@ -135,6 +135,15 @@ export const api = {
     },
     removeLogo: () => request('/settings/billing/logo', { method: 'DELETE' }),
     removeStamp: () => request('/settings/billing/stamp', { method: 'DELETE' }),
+    uploadSignature: async (file: File) => {
+      const token = localStorage.getItem('karobar_token');
+      const fd = new FormData();
+      fd.append('signature', file);
+      const res = await fetch(`${API_BASE}/settings/billing/signature`, { method: 'POST', headers: { Authorization: `Bearer ${token}` }, body: fd });
+      if (!res.ok) { const d = await res.json().catch(() => ({})); throw new Error(d.error || 'Upload failed'); }
+      return res.json();
+    },
+    removeSignature: () => request('/settings/billing/signature', { method: 'DELETE' }),
   },
   invoices: {
     list: (params?: { search?: string; page?: number; limit?: number }) => {

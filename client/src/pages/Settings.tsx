@@ -32,8 +32,10 @@ export default function Settings() {
   const [billingMessage, setBillingMessage] = useState('');
   const logoInputRef = useRef<HTMLInputElement>(null);
   const stampInputRef = useRef<HTMLInputElement>(null);
+  const signatureInputRef = useRef<HTMLInputElement>(null);
   const [uploadingLogo, setUploadingLogo] = useState(false);
   const [uploadingStamp, setUploadingStamp] = useState(false);
+  const [uploadingSignature, setUploadingSignature] = useState(false);
 
   useEffect(() => {
     api.settings.getBilling().then(setBilling).catch(() => {}).finally(() => setBillingLoading(false));
@@ -172,12 +174,27 @@ export default function Settings() {
     finally { setUploadingStamp(false); if (stampInputRef.current) stampInputRef.current.value = ''; }
   };
 
+  const handleSignatureUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]; if (!file) return;
+    setUploadingSignature(true);
+    try {
+      const res = await api.settings.uploadSignature(file);
+      setBilling((prev: any) => ({ ...prev, signature_url: res.signature_url }));
+      toast('success', t.success);
+    } catch (err: any) { toast('error', err.message); }
+    finally { setUploadingSignature(false); if (signatureInputRef.current) signatureInputRef.current.value = ''; }
+  };
+
   const handleRemoveLogo = async () => {
     try { await api.settings.removeLogo(); setBilling((prev: any) => ({ ...prev, logo_url: '' })); toast('success', t.success); } catch (err: any) { toast('error', err.message); }
   };
 
   const handleRemoveStamp = async () => {
     try { await api.settings.removeStamp(); setBilling((prev: any) => ({ ...prev, stamp_url: '' })); toast('success', t.success); } catch (err: any) { toast('error', err.message); }
+  };
+
+  const handleRemoveSignature = async () => {
+    try { await api.settings.removeSignature(); setBilling((prev: any) => ({ ...prev, signature_url: '' })); toast('success', t.success); } catch (err: any) { toast('error', err.message); }
   };
 
   return (
@@ -282,6 +299,27 @@ export default function Settings() {
                   </button>
                 )}
                 <input ref={stampInputRef} type="file" accept="image/*" className="hidden" onChange={handleStampUpload} />
+              </div>
+              <p className="text-xs text-gray-400 mt-1">PNG / JPG — {t.optional}</p>
+            </div>
+
+            <div className="pt-2">
+              <label className="label">Seller's Signature <span className="text-gray-400 font-normal">({t.optional})</span></label>
+              <div className="flex items-center gap-4">
+                {billing.signature_url ? (
+                  <div className="flex items-center gap-3">
+                    <img src={billing.signature_url} alt="Signature" className="h-12 w-40 object-contain border rounded-lg dark:border-gray-600" />
+                    <div className="flex flex-col gap-1">
+                      <button onClick={() => signatureInputRef.current?.click()} className="text-sm text-primary-600 hover:text-primary-700">{t.replaceStamp || 'Replace'}</button>
+                      <button onClick={handleRemoveSignature} className="text-sm text-red-600 hover:text-red-700">{t.removeStamp || 'Remove'}</button>
+                    </div>
+                  </div>
+                ) : (
+                  <button onClick={() => signatureInputRef.current?.click()} disabled={uploadingSignature} className="btn-secondary text-sm flex items-center gap-2">
+                    <Upload className="w-4 h-4" /> {uploadingSignature ? t.loading : 'Upload Signature'}
+                  </button>
+                )}
+                <input ref={signatureInputRef} type="file" accept="image/*" className="hidden" onChange={handleSignatureUpload} />
               </div>
               <p className="text-xs text-gray-400 mt-1">PNG / JPG — {t.optional}</p>
             </div>

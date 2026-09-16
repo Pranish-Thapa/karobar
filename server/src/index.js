@@ -642,6 +642,36 @@ app.delete('/api/settings/billing/stamp', auth, ensureDb, async (req, res) => {
   } catch (err) { res.status(500).json({ error: sanitizeError(err) }); }
 });
 
+app.post('/api/settings/billing/signature', auth, ensureDb, upload.single('signature'), async (req, res) => {
+  try {
+    if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
+    const settings = await get('SELECT id, signature_url FROM business_settings WHERE user_id = $1', [req.userId]);
+    if (settings && settings.signature_url) {
+      const oldPath = path.join(__dirname, '..', settings.signature_url);
+      fs.unlink(oldPath, () => {});
+    }
+    const filePath = 'uploads/' + req.file.filename;
+    if (settings) {
+      await run('UPDATE business_settings SET signature_url=$1, updated_at=CURRENT_TIMESTAMP WHERE user_id=$2', [filePath, req.userId]);
+    } else {
+      await run('INSERT INTO business_settings (id, user_id, signature_url) VALUES ($1,$2,$3)', [uuidv4(), req.userId, filePath]);
+    }
+    res.json({ signature_url: filePath });
+  } catch (err) { res.status(500).json({ error: sanitizeError(err) }); }
+});
+
+app.delete('/api/settings/billing/signature', auth, ensureDb, async (req, res) => {
+  try {
+    const settings = await get('SELECT id, signature_url FROM business_settings WHERE user_id = $1', [req.userId]);
+    if (settings && settings.signature_url) {
+      const filePath = path.join(__dirname, '..', settings.signature_url);
+      fs.unlink(filePath, () => {});
+      await run('UPDATE business_settings SET signature_url=$1, updated_at=CURRENT_TIMESTAMP WHERE user_id=$2', ['', req.userId]);
+    }
+    res.json({ message: 'Signature removed' });
+  } catch (err) { res.status(500).json({ error: sanitizeError(err) }); }
+});
+
 // ==================== INVOICES ====================
 app.post('/api/invoices', auth, ensureDb, [
   body('sale_id').isString().notEmpty().withMessage('Sale ID is required'),
@@ -665,16 +695,23 @@ app.post('/api/invoices', auth, ensureDb, [
     );
 
     const settings = await get('SELECT * FROM business_settings WHERE user_id = $1', [req.userId]);
-    const user = await get('SELECT vat_registered FROM users WHERE id = $1', [req.userId]);
+    const user = await get('SELECT vat_registered, shop_name FROM users WHERE id = $1', [req.userId]);
 
     const maxInvoice = await get('SELECT MAX(invoice_number) as max_num FROM invoices WHERE user_id = $1', [req.userId]);
     const nextNumber = (maxInvoice && maxInvoice.max_num) ? maxInvoice.max_num + 1 : 1;
 
-    const businessSnapshot = settings ? {
-      shop_name: settings.shop_name, address: settings.address, phone: settings.phone,
-      email: settings.email, website: settings.website, pan: settings.pan,
-      vat_number: settings.vat_number, logo_url: settings.logo_url, stamp_url: settings.stamp_url
-    } : {};
+    const businessSnapshot = {
+      shop_name: (settings && settings.shop_name) || (user && user.shop_name) || 'My Shop',
+      address: (settings && settings.address) || '',
+      phone: (settings && settings.phone) || '',
+      email: (settings && settings.email) || '',
+      website: (settings && settings.website) || '',
+      pan: (settings && settings.pan) || '',
+      vat_number: (settings && settings.vat_number) || '',
+      logo_url: (settings && settings.logo_url) || '',
+      stamp_url: (settings && settings.stamp_url) || '',
+      signature_url: (settings && settings.signature_url) || '',
+    };
 
     const customerSnapshot = sale.customer_id ? {
       name: sale.customer_name, phone: sale.customer_phone,
