@@ -395,6 +395,8 @@ app.post('/api/orders/:id/complete', auth, ensureDb, async (req, res) => {
       const orderItems = (await client.query('SELECT * FROM order_items WHERE order_id = $1', [req.params.id])).rows;
       if (orderItems.length === 0) throw new Error('Order has no items');
       const saleId = uuidv4();
+      // Insert sale first so sale_items FK is satisfied
+      await client.query('INSERT INTO sales (id, user_id, customer_id, order_id, total_amount, cost_amount, profit, amount_paid, due_amount) VALUES ($1,$2,$3,$4,0,0,0,$5,$6)', [saleId, req.userId, order.customer_id, req.params.id, order.amount_paid, 0 - order.amount_paid]);
       let totalRevenue = 0, totalCost = 0;
       for (const item of orderItems) {
         const productRes = await client.query('SELECT * FROM products WHERE id = $1 AND user_id = $2 FOR UPDATE', [item.product_id, req.userId]);
@@ -412,7 +414,7 @@ app.post('/api/orders/:id/complete', auth, ensureDb, async (req, res) => {
         }
       }
       const profit = totalRevenue - totalCost;
-      await client.query('INSERT INTO sales (id, user_id, customer_id, order_id, total_amount, cost_amount, profit, amount_paid, due_amount) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)', [saleId, req.userId, order.customer_id, req.params.id, totalRevenue, totalCost, profit, order.amount_paid, totalRevenue - order.amount_paid]);
+      await client.query('UPDATE sales SET total_amount = $1, cost_amount = $2, profit = $3, due_amount = GREATEST(0, $1 - $4) WHERE id = $5', [totalRevenue, totalCost, profit, order.amount_paid, saleId]);
       if (order.customer_id) await client.query('UPDATE customers SET total_purchases = total_purchases + $1, outstanding_dues = outstanding_dues + $2, updated_at = CURRENT_TIMESTAMP WHERE id = $3', [totalRevenue, totalRevenue - order.amount_paid, order.customer_id]);
       await client.query('UPDATE orders SET status = $1, completed_date = CURRENT_TIMESTAMP WHERE id = $2', ['completed', req.params.id]);
       await client.query('INSERT INTO notifications (id, user_id, type, title, message, entity_id, entity_type) VALUES ($1,$2,$3,$4,$5,$6,$7)', [uuidv4(), req.userId, 'sale', 'Sale Completed', `Order completed. Profit: Rs. ${profit.toFixed(2)}`, saleId, 'sale']);
@@ -436,6 +438,8 @@ app.post('/api/sales', auth, ensureDb, [
         if (cust.rows.length === 0) throw new Error('Customer not found');
       }
       const saleId = uuidv4();
+      // Insert sale first so sale_items FK is satisfied
+      await client.query('INSERT INTO sales (id, user_id, customer_id, total_amount, cost_amount, profit, amount_paid, due_amount, notes) VALUES ($1,$2,$3,0,0,0,0,0,$4)', [saleId, req.userId, customer_id || null, notes || '']);
       let totalRevenue = 0, totalCost = 0;
       for (const item of items) {
         const productRes = await client.query('SELECT * FROM products WHERE id = $1 AND user_id = $2 FOR UPDATE', [item.product_id, req.userId]);
@@ -456,7 +460,7 @@ app.post('/api/sales', auth, ensureDb, [
       if (paid > totalRevenue) throw new Error('Amount paid cannot exceed total');
       const due = Math.max(0, totalRevenue - paid);
       const profit = totalRevenue - totalCost;
-      await client.query('INSERT INTO sales (id, user_id, customer_id, total_amount, cost_amount, profit, amount_paid, due_amount, notes) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)', [saleId, req.userId, customer_id || null, totalRevenue, totalCost, profit, paid, due, notes || '']);
+      await client.query('UPDATE sales SET total_amount = $1, cost_amount = $2, profit = $3, amount_paid = $4, due_amount = $5 WHERE id = $6', [totalRevenue, totalCost, profit, paid, due, saleId]);
       if (customer_id) await client.query('UPDATE customers SET total_purchases = total_purchases + $1, total_paid = total_paid + $2, outstanding_dues = outstanding_dues + $3, updated_at = CURRENT_TIMESTAMP WHERE id = $4', [totalRevenue, paid, due, customer_id]);
       return (await client.query('SELECT * FROM sales WHERE id = $1', [saleId])).rows[0];
     });
