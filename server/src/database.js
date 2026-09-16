@@ -150,12 +150,9 @@ async function initTables() {
         FOREIGN KEY (product_id) REFERENCES products(id)
       )
     `);
-  } finally {
-    client.release();
-  }
-}
-
-async function all(sql, params = []) {
+    // Migration
+    await client.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS language TEXT DEFAULT 'en'`).catch(() => {});
+  } finally {(sql, params = []) {
   const result = await pool.query(sql, params);
   return result.rows;
 }

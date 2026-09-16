@@ -18,16 +18,21 @@ const translations: Record<Language, Translations> = { en, ne };
 const I18nContext = createContext<I18nContextType | undefined>(undefined);
 
 export function I18nProvider({ children }: { children: ReactNode }) {
-  const { user } = useAuth();
-  const [lang, setLangState] = useState<Language>((user?.language as Language) || 'en');
+  const { user, updateUser } = useAuth();
+  const [lang, setLang] = useState<Language>((user?.language as Language) || 'en');
 
   useEffect(() => {
-    if (user?.language) setLangState(user.language as Language);
-  }, [user]);
+    if (user?.language) setLang(user.language as Language);
+  }, [user?.language]);
 
-  const setLanguage = (l: Language) => {
-    setLangState(l);
-    api.settings.updateLanguage(l).catch(() => {});
+  const setLanguage = async (l: Language) => {
+    setLang(l);
+    try {
+      await api.settings.updateLanguage(l);
+      updateUser({ language: l });
+    } catch (err) {
+      console.error('Failed to save language:', err);
+    }
   };
 
   return (

@@ -66,7 +66,9 @@ export default function Settings() {
           <div className="border-t border-gray-200 dark:border-gray-600 pt-3">
             <button onClick={toggle} className="w-full flex items-center justify-between p-3 rounded-lg border border-gray-200 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors">
               <span className="text-gray-900 dark:text-white font-medium flex items-center gap-2">{dark ? <Moon className="w-4 h-4" /> : <Sun className="w-4 h-4" />} Dark Mode</span>
-              <div className={`w-10 h-6 rounded-full transition-colors ${dark ? 'bg-primary-600' : 'bg-gray-300'}`}><div className={`w-5 h-5 bg-white rounded-full shadow transition-transform mt-0.5 ${dark ? 'translate-x-4.5 ml-0.5' : 'ml-0.5'}`}></div></div>
+              <div className={`w-11 h-6 rounded-full transition-colors relative ${dark ? 'bg-primary-600' : 'bg-gray-300'}`}>
+                <div className={`w-5 h-5 bg-white rounded-full shadow absolute top-0.5 transition-transform ${dark ? 'translate-x-5' : 'translate-x-0.5'}`}></div>
+              </div>
             </button>
           </div>
         </div>
