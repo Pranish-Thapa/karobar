@@ -127,12 +127,12 @@ export default function ProfitLoss() {
             <div className="p-4 bg-yellow-50 rounded-lg">
               <div className="flex justify-between items-start mb-2">
                 <div>
-                  <p className="font-semibold text-gray-900">{mostProfitableSale.customer_name || 'Walk-in Customer'}</p>
+                  <p className="font-semibold text-gray-900">{mostProfitableSale.customer_name || t.walkInCustomer}</p>
                   <p className="text-sm text-gray-500">{formatDate(mostProfitableSale.sale_date)}</p>
                 </div>
-                <span className="badge badge-success">{formatCurrency(mostProfitableSale.profit)} profit</span>
+                <span className="badge badge-success">{formatCurrency(mostProfitableSale.profit)} {t.profit}</span>
               </div>
-              <p className="text-sm text-gray-600 mb-2">{mostProfitableSale.items || 'No items'}</p>
+              <p className="text-sm text-gray-600 mb-2">{mostProfitableSale.items || t.noItems}</p>
               <div className="grid grid-cols-2 gap-2 text-sm">
                 <div>
                   <p className="text-gray-400">{t.salesRevenue}</p>
@@ -184,7 +184,7 @@ export default function ProfitLoss() {
                   <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
                   <XAxis dataKey="name" tick={{ fontSize: 11 }} />
                   <YAxis tick={{ fontSize: 12 }} tickFormatter={v => `${(v/1000).toFixed(0)}k`} />
-                  <Tooltip formatter={(value: number) => [formatCurrency(value), 'Profit']} />
+                  <Tooltip formatter={(value: number) => [formatCurrency(value), t.profit]} />
                   <Bar dataKey="profit" fill="#22c55e" radius={[4, 4, 0, 0]} />
                 </BarChart>
               </ResponsiveContainer>

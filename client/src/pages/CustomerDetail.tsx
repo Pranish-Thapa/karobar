@@ -192,10 +192,10 @@ export default function CustomerDetail() {
                 <div className="flex items-center justify-between mb-2">
                   <p className="font-medium text-gray-900">{formatDateTime(tx.sale_date)}</p>
                   <span className={`badge ${tx.due_amount > 0 ? 'badge-warning' : 'badge-success'}`}>
-                    {tx.due_amount > 0 ? 'Partial' : t.noDues}
+                    {tx.due_amount > 0 ? t.partial : t.noDues}
                   </span>
                 </div>
-                <p className="text-sm text-gray-600 mb-2">{tx.product_names || 'No items'}</p>
+                <p className="text-sm text-gray-600 mb-2">{tx.product_names || t.noItems}</p>
                 <div className="grid grid-cols-3 gap-2 text-sm">
                   <div>
                     <p className="text-gray-400">{t.total}</p>

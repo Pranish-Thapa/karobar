@@ -46,70 +46,70 @@ export default function Dashboard() {
   return (
     <div className="pb-20 lg:pb-0">
       <div className="mb-8">
-        <h1 className="text-2xl lg:text-3xl font-bold text-gray-900">{greeting()} 👋</h1>
-        <p className="text-gray-500 mt-1">{t.shopOverview}</p>
+        <h1 className="text-2xl lg:text-3xl font-bold text-gray-900 dark:text-gray-100">{greeting()} 👋</h1>
+        <p className="text-gray-500 dark:text-gray-400 mt-1">{t.shopOverview}</p>
       </div>
 
       {/* Stats Cards */}
       <div className="grid grid-cols-2 lg:grid-cols-3 gap-4 mb-8">
         <div className="card">
           <div className="flex items-center gap-3 mb-3">
-            <div className="w-10 h-10 bg-green-100 rounded-lg flex items-center justify-center">
-              <DollarSign className="w-5 h-5 text-green-600" />
+            <div className="w-10 h-10 bg-green-100 dark:bg-green-900/30 rounded-lg flex items-center justify-center">
+              <DollarSign className="w-5 h-5 text-green-600 dark:text-green-400" />
             </div>
-            <span className="text-sm font-medium text-gray-500">{t.todaysSales}</span>
+            <span className="text-sm font-medium text-gray-500 dark:text-gray-400">{t.todaysSales}</span>
           </div>
-          <p className="text-2xl font-bold text-gray-900">{formatCurrency(data.todaySales)}</p>
+          <p className="text-2xl font-bold text-gray-900 dark:text-gray-100">{formatCurrency(data.todaySales)}</p>
         </div>
 
         <div className="card">
           <div className="flex items-center gap-3 mb-3">
-            <div className="w-10 h-10 bg-primary-100 rounded-lg flex items-center justify-center">
-              <TrendingUp className="w-5 h-5 text-primary-600" />
+            <div className="w-10 h-10 bg-primary-100 dark:bg-primary-900/30 rounded-lg flex items-center justify-center">
+              <TrendingUp className="w-5 h-5 text-primary-600 dark:text-primary-400" />
             </div>
-            <span className="text-sm font-medium text-gray-500">{t.todaysProfit}</span>
+            <span className="text-sm font-medium text-gray-500 dark:text-gray-400">{t.todaysProfit}</span>
           </div>
-          <p className="text-2xl font-bold text-primary-600">{formatCurrency(data.todayProfit)}</p>
+          <p className="text-2xl font-bold text-primary-600 dark:text-primary-400">{formatCurrency(data.todayProfit)}</p>
         </div>
 
         <div className="card">
           <div className="flex items-center gap-3 mb-3">
-            <div className="w-10 h-10 bg-yellow-100 rounded-lg flex items-center justify-center">
-              <Users className="w-5 h-5 text-yellow-600" />
+            <div className="w-10 h-10 bg-yellow-100 dark:bg-yellow-900/30 rounded-lg flex items-center justify-center">
+              <Users className="w-5 h-5 text-yellow-600 dark:text-yellow-400" />
             </div>
-            <span className="text-sm font-medium text-gray-500">{t.pendingDues}</span>
+            <span className="text-sm font-medium text-gray-500 dark:text-gray-400">{t.pendingDues}</span>
           </div>
-          <p className="text-2xl font-bold text-yellow-600">{formatCurrency(data.pendingDues)}</p>
+          <p className="text-2xl font-bold text-yellow-600 dark:text-yellow-400">{formatCurrency(data.pendingDues)}</p>
         </div>
 
         <div className="card">
           <div className="flex items-center gap-3 mb-3">
-            <div className="w-10 h-10 bg-blue-100 rounded-lg flex items-center justify-center">
-              <Package className="w-5 h-5 text-blue-600" />
+            <div className="w-10 h-10 bg-blue-100 dark:bg-blue-900/30 rounded-lg flex items-center justify-center">
+              <Package className="w-5 h-5 text-blue-600 dark:text-blue-400" />
             </div>
-            <span className="text-sm font-medium text-gray-500">{t.inventoryValue}</span>
+            <span className="text-sm font-medium text-gray-500 dark:text-gray-400">{t.inventoryValue}</span>
           </div>
-          <p className="text-2xl font-bold text-gray-900">{formatCurrency(data.inventoryValue)}</p>
+          <p className="text-2xl font-bold text-gray-900 dark:text-gray-100">{formatCurrency(data.inventoryValue)}</p>
         </div>
 
         <div className="card">
           <div className="flex items-center gap-3 mb-3">
-            <div className="w-10 h-10 bg-red-100 rounded-lg flex items-center justify-center">
-              <AlertTriangle className="w-5 h-5 text-red-600" />
+            <div className="w-10 h-10 bg-red-100 dark:bg-red-900/30 rounded-lg flex items-center justify-center">
+              <AlertTriangle className="w-5 h-5 text-red-600 dark:text-red-400" />
             </div>
-            <span className="text-sm font-medium text-gray-500">{t.lowStockItems}</span>
+            <span className="text-sm font-medium text-gray-500 dark:text-gray-400">{t.lowStockItems}</span>
           </div>
-          <p className="text-2xl font-bold text-red-600">{data.lowStockCount}</p>
+          <p className="text-2xl font-bold text-red-600 dark:text-red-400">{data.lowStockCount}</p>
         </div>
 
         <div className="card">
           <div className="flex items-center gap-3 mb-3">
-            <div className="w-10 h-10 bg-purple-100 rounded-lg flex items-center justify-center">
-              <Clock className="w-5 h-5 text-purple-600" />
+            <div className="w-10 h-10 bg-purple-100 dark:bg-purple-900/30 rounded-lg flex items-center justify-center">
+              <Clock className="w-5 h-5 text-purple-600 dark:text-purple-400" />
             </div>
-            <span className="text-sm font-medium text-gray-500">{t.upcomingOrders}</span>
+            <span className="text-sm font-medium text-gray-500 dark:text-gray-400">{t.upcomingOrders}</span>
           </div>
-          <p className="text-2xl font-bold text-gray-900">{data.upcomingOrders}</p>
+          <p className="text-2xl font-bold text-gray-900 dark:text-gray-100">{data.upcomingOrders}</p>
           {data.upcomingOrdersValue > 0 && (
             <p className="text-xs text-gray-500 mt-1">{formatCurrency(data.upcomingOrdersValue)}</p>
           )}
@@ -120,10 +120,10 @@ export default function Dashboard() {
       <div className="grid lg:grid-cols-2 gap-6 mb-8">
         <div className="card">
           <div className="flex items-center justify-between mb-4">
-            <h3 className="font-semibold text-gray-900">{t.salesOverview}</h3>
-            <div className="flex gap-1 bg-gray-100 rounded-lg p-1">
-              <button onClick={() => setChartPeriod('7d')} className={`px-3 py-1 text-xs font-medium rounded-md transition-colors ${chartPeriod === '7d' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500'}`}>7D</button>
-              <button onClick={() => setChartPeriod('30d')} className={`px-3 py-1 text-xs font-medium rounded-md transition-colors ${chartPeriod === '30d' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500'}`}>30D</button>
+            <h3 className="font-semibold text-gray-900 dark:text-gray-100">{t.salesOverview}</h3>
+            <div className="flex gap-1 bg-gray-100 dark:bg-gray-800 rounded-lg p-1">
+              <button onClick={() => setChartPeriod('7d')} className={`px-3 py-1 text-xs font-medium rounded-md transition-colors ${chartPeriod === '7d' ? 'bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 shadow-sm' : 'text-gray-500 dark:text-gray-400'}`}>7D</button>
+              <button onClick={() => setChartPeriod('30d')} className={`px-3 py-1 text-xs font-medium rounded-md transition-colors ${chartPeriod === '30d' ? 'bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 shadow-sm' : 'text-gray-500 dark:text-gray-400'}`}>30D</button>
             </div>
           </div>
           <div className="h-64">
@@ -133,7 +133,7 @@ export default function Dashboard() {
                   <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
                   <XAxis dataKey="date" tick={{ fontSize: 12 }} tickFormatter={v => new Date(v).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })} />
                   <YAxis tick={{ fontSize: 12 }} tickFormatter={v => `${(v/1000).toFixed(0)}k`} />
-                  <Tooltip formatter={(value: number) => [`Rs. ${value.toLocaleString('en-IN')}`, 'Sales']} labelFormatter={label => new Date(label).toLocaleDateString('en-IN', { day: 'numeric', month: 'long' })} />
+                  <Tooltip formatter={(value: number) => [`Rs. ${value.toLocaleString('en-IN')}`, t.sales]} labelFormatter={label => new Date(label).toLocaleDateString('en-IN', { day: 'numeric', month: 'long' })} />
                   <Bar dataKey="total" fill="#22c55e" radius={[4, 4, 0, 0]} />
                 </BarChart>
               </ResponsiveContainer>
@@ -145,10 +145,10 @@ export default function Dashboard() {
 
         <div className="card">
           <div className="flex items-center justify-between mb-4">
-            <h3 className="font-semibold text-gray-900">{t.profitOverview}</h3>
-            <div className="flex gap-1 bg-gray-100 rounded-lg p-1">
-              <button onClick={() => setChartPeriod('7d')} className={`px-3 py-1 text-xs font-medium rounded-md transition-colors ${chartPeriod === '7d' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500'}`}>7D</button>
-              <button onClick={() => setChartPeriod('30d')} className={`px-3 py-1 text-xs font-medium rounded-md transition-colors ${chartPeriod === '30d' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500'}`}>30D</button>
+            <h3 className="font-semibold text-gray-900 dark:text-gray-100">{t.profitOverview}</h3>
+            <div className="flex gap-1 bg-gray-100 dark:bg-gray-800 rounded-lg p-1">
+              <button onClick={() => setChartPeriod('7d')} className={`px-3 py-1 text-xs font-medium rounded-md transition-colors ${chartPeriod === '7d' ? 'bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 shadow-sm' : 'text-gray-500 dark:text-gray-400'}`}>7D</button>
+              <button onClick={() => setChartPeriod('30d')} className={`px-3 py-1 text-xs font-medium rounded-md transition-colors ${chartPeriod === '30d' ? 'bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 shadow-sm' : 'text-gray-500 dark:text-gray-400'}`}>30D</button>
             </div>
           </div>
           <div className="h-64">
@@ -158,7 +158,7 @@ export default function Dashboard() {
                   <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
                   <XAxis dataKey="date" tick={{ fontSize: 12 }} tickFormatter={v => new Date(v).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })} />
                   <YAxis tick={{ fontSize: 12 }} tickFormatter={v => `${(v/1000).toFixed(0)}k`} />
-                  <Tooltip formatter={(value: number) => [`Rs. ${value.toLocaleString('en-IN')}`, 'Profit']} labelFormatter={label => new Date(label).toLocaleDateString('en-IN', { day: 'numeric', month: 'long' })} />
+                  <Tooltip formatter={(value: number) => [`Rs. ${value.toLocaleString('en-IN')}`, t.profit]} labelFormatter={label => new Date(label).toLocaleDateString('en-IN', { day: 'numeric', month: 'long' })} />
                   <Line type="monotone" dataKey="total" stroke="#16a34a" strokeWidth={2} dot={{ fill: '#16a34a' }} />
                 </LineChart>
               </ResponsiveContainer>
@@ -174,7 +174,7 @@ export default function Dashboard() {
         {data.lowStockProducts.length > 0 && (
           <div className="card">
             <div className="flex items-center justify-between mb-4">
-              <h3 className="font-semibold text-gray-900 flex items-center gap-2">
+              <h3 className="font-semibold text-gray-900 dark:text-gray-100 flex items-center gap-2">
                 <AlertTriangle className="w-4 h-4 text-red-500" />
                 {t.lowStock}
               </h3>
@@ -184,10 +184,10 @@ export default function Dashboard() {
             </div>
             <div className="space-y-3">
               {data.lowStockProducts.slice(0, 5).map((p: any, i: number) => (
-                <div key={i} className="flex items-center justify-between p-3 bg-red-50 rounded-lg">
+                <div key={i} className="flex items-center justify-between p-3 bg-red-50 dark:bg-red-900/10 rounded-lg">
                   <div>
-                    <p className="font-medium text-gray-900 text-sm">{p.name}</p>
-                    <p className="text-xs text-gray-500">Threshold: {p.low_stock_threshold}</p>
+                    <p className="font-medium text-gray-900 dark:text-gray-100 text-sm">{p.name}</p>
+                    <p className="text-xs text-gray-500 dark:text-gray-400">{t.threshold}: {p.low_stock_threshold}</p>
                   </div>
                   <span className="badge badge-danger">{p.stock} {t.remaining}</span>
                 </div>
@@ -198,7 +198,7 @@ export default function Dashboard() {
 
         <div className="card">
           <div className="flex items-center justify-between mb-4">
-            <h3 className="font-semibold text-gray-900">{t.recentSales}</h3>
+            <h3 className="font-semibold text-gray-900 dark:text-gray-100">{t.recentSales}</h3>
             <Link to="/sales" className="text-sm text-primary-600 hover:text-primary-700 flex items-center gap-1">
               {t.viewAll} <ArrowRight className="w-3 h-3" />
             </Link>
@@ -206,13 +206,13 @@ export default function Dashboard() {
           {data.recentSales.length > 0 ? (
             <div className="space-y-3">
               {data.recentSales.map((sale: any) => (
-                <div key={sale.id} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                <div key={sale.id} className="flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-800 rounded-lg">
                   <div>
-                    <p className="font-medium text-gray-900 text-sm">{sale.customer_name || 'Walk-in Customer'}</p>
-                    <p className="text-xs text-gray-500">{sale.product_names || 'No items'}</p>
+                    <p className="font-medium text-gray-900 dark:text-gray-100 text-sm">{sale.customer_name || t.walkInCustomer}</p>
+                    <p className="text-xs text-gray-500 dark:text-gray-400">{sale.product_names || t.noItems}</p>
                   </div>
                   <div className="text-right">
-                    <p className="font-semibold text-gray-900 text-sm">{formatCurrency(sale.total_amount)}</p>
+                    <p className="font-semibold text-gray-900 dark:text-gray-100 text-sm">{formatCurrency(sale.total_amount)}</p>
                     <p className="text-xs text-primary-600">+{formatCurrency(sale.profit)}</p>
                   </div>
                 </div>
