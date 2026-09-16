@@ -113,6 +113,8 @@ const ne = {
   from: 'देखि',
   to: 'सम्म',
   clearFilters: 'फिल्टर मेटाउनुहोस्',
+  editSale: 'बिक्री सम्पादन गर्नुहोस्',
+  paid: 'तिरिएको',
 
   // Returns
   processReturn: 'फिर्ता प्रक्रिया',

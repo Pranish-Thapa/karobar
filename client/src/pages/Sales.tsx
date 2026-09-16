@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { Search, Plus, ShoppingCart, Clock, CheckCircle, X, Filter, RotateCcw } from 'lucide-react';
+import { Search, Plus, ShoppingCart, Clock, CheckCircle, X, Filter, RotateCcw, DollarSign, ChevronDown } from 'lucide-react';
 import { api } from '../lib/api';
 import { formatCurrency, formatDate } from '../lib/utils';
 import { useI18n } from '../context/I18nContext';
@@ -7,6 +7,49 @@ import { useToast } from '../components/Toast';
 import Pagination from '../components/Pagination';
 
 const PAGE_LIMIT = 10;
+
+function CustomerSearch({ customers, value, onChange, placeholder, walkInLabel }: { customers: any[]; value: string; onChange: (id: string) => void; placeholder: string; walkInLabel: string }) {
+  const [query, setQuery] = useState('');
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  const selected = customers.find(c => c.id === value);
+
+  useEffect(() => {
+    const handler = (e: MouseEvent) => { if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false); };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, []);
+
+  const filtered = query
+    ? customers.filter(c => c.name.toLowerCase().includes(query.toLowerCase()) || (c.phone && c.phone.includes(query)))
+    : customers;
+
+  return (
+    <div ref={ref} className="relative">
+      <button type="button" onClick={() => setOpen(!open)} className="input w-full text-left flex items-center justify-between">
+        <span className={selected ? 'text-gray-900 dark:text-white' : 'text-gray-400'}>{selected ? `${selected.name}${selected.phone ? ` (${selected.phone})` : ''}` : placeholder}</span>
+        <ChevronDown className={`w-4 h-4 transition-transform ${open ? 'rotate-180' : ''}`} />
+      </button>
+      {open && (
+        <div className="absolute z-50 w-full mt-1 bg-white dark:bg-gray-800 border dark:border-gray-600 rounded-lg shadow-lg max-h-60 overflow-y-auto">
+          <div className="p-2 border-b dark:border-gray-700 sticky top-0 bg-white dark:bg-gray-800">
+            <input type="text" value={query} onChange={e => setQuery(e.target.value)} placeholder={placeholder} className="w-full px-3 py-1.5 text-sm bg-gray-50 dark:bg-gray-700 rounded-md border-0 focus:ring-1 focus:ring-primary-500" autoFocus />
+          </div>
+          <button type="button" onClick={() => { onChange(''); setOpen(false); setQuery(''); }} className={`w-full text-left px-3 py-2 text-sm hover:bg-gray-100 dark:hover:bg-gray-700 ${!value ? 'bg-primary-50 dark:bg-primary-900/20 text-primary-600' : 'text-gray-700 dark:text-gray-300'}`}>
+            {walkInLabel}
+          </button>
+          {filtered.map(c => (
+            <button key={c.id} type="button" onClick={() => { onChange(c.id); setOpen(false); setQuery(''); }} className={`w-full text-left px-3 py-2 text-sm hover:bg-gray-100 dark:hover:bg-gray-700 flex justify-between ${value === c.id ? 'bg-primary-50 dark:bg-primary-900/20 text-primary-600' : 'text-gray-700 dark:text-gray-300'}`}>
+              <span>{c.name}</span>
+              {c.phone && <span className="text-gray-400">{c.phone}</span>}
+            </button>
+          ))}
+          {filtered.length === 0 && <div className="px-3 py-2 text-sm text-gray-400">No results</div>}
+        </div>
+      )}
+    </div>
+  );
+}
 
 export default function Sales() {
   const { t } = useI18n();
@@ -47,6 +90,9 @@ export default function Sales() {
   const [orderExpectedDate, setOrderExpectedDate] = useState('');
   const [orderNotes, setOrderNotes] = useState('');
   const [orderError, setOrderError] = useState('');
+  const [editingSaleId, setEditingSaleId] = useState<string | null>(null);
+  const [editPaymentAmount, setEditPaymentAmount] = useState('');
+  const [updatingPayment, setUpdatingPayment] = useState<string | null>(null);
 
   const debounceTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -65,7 +111,7 @@ export default function Sales() {
 
   useEffect(() => {
     api.products.list().then(p => setProducts(p.data || p || [])).catch(() => {});
-    api.customers.list().then(c => setCustomers(c.data || c || [])).catch(() => {});
+    api.customers.list(undefined, undefined, 500).then(c => setCustomers(c.data || c || [])).catch(() => {});
   }, []);
 
   useEffect(() => {
@@ -110,8 +156,6 @@ export default function Sales() {
       setSaleSuccess(result); setShowNewSale(false);
       setSaleCustomerId(''); setSaleItems([]); setSalePaid('');
       toast('success', t.saleCompleted);
-      setSales(prev => [{ ...result, items: '' }, ...prev]);
-      setTotalSales(prev => prev + 1);
       loadData();
     } catch (err: any) { setSaleError(err.message); } finally { setSubmittingSale(false); }
   };
@@ -143,6 +187,23 @@ export default function Sales() {
       toast('success', t.returnProcessed);
       loadData();
     } catch (err: any) { toast('error', err.message); } finally { setSubmittingReturn(false); }
+  };
+
+  const handleUpdatePayment = async (saleId: string) => {
+    const amount = parseFloat(editPaymentAmount);
+    if (isNaN(amount) || amount < 0) { toast('error', t.validAmountRequired); return; }
+    setUpdatingPayment(saleId);
+    try {
+      await api.sales.update(saleId, { amount_paid: amount });
+      toast('success', t.success);
+      setEditingSaleId(null);
+      setEditPaymentAmount('');
+      loadData();
+    } catch (err: any) {
+      toast('error', err.message);
+    } finally {
+      setUpdatingPayment(null);
+    }
   };
 
   const upcomingOrders = orders.filter(o => o.status === 'upcoming');
@@ -185,7 +246,62 @@ export default function Sales() {
       : tab === 'sales' ? (
         sales.length === 0 ? <div className="text-center py-16"><ShoppingCart className="w-12 h-12 text-gray-300 mx-auto mb-3" /><p className="text-gray-500 font-medium">{t.noCompletedSales}</p></div>
         : <>
-          <div className="space-y-3">{sales.map(sale => (<div key={sale.id} className="card"><div className="flex items-start justify-between mb-2"><div><p className="font-semibold text-gray-900 dark:text-white">{sale.customer_name || t.walkInCustomer}</p><p className="text-sm text-gray-500 dark:text-gray-400">{formatDate(sale.sale_date)}</p></div><div className="text-right"><p className="font-bold text-gray-900 dark:text-white">{formatCurrency(sale.total_amount)}</p><p className="text-sm text-primary-600">+{formatCurrency(sale.profit)} {t.profit}</p></div></div><p className="text-sm text-gray-600 dark:text-gray-300 mb-2">{sale.items || '-'}</p><div className="flex gap-4 text-sm"><span className="text-gray-500">{t.amountPaid}: <span className="text-green-600 font-medium">{formatCurrency(sale.amount_paid)}</span></span>{sale.due_amount > 0 && <span className="text-gray-500">{t.due}: <span className="text-red-600 font-medium">{formatCurrency(sale.due_amount)}</span></span>}</div></div>))}</div>
+          <div className="space-y-3">{sales.map(sale => {
+            const isEditing = editingSaleId === sale.id;
+            const isPaid = sale.due_amount <= 0;
+            return (
+              <div key={sale.id} className={`card ${isPaid ? 'border-l-4 border-l-green-500' : 'border-l-4 border-l-red-500'}`}>
+                <div className="flex items-start justify-between mb-2">
+                  <div>
+                    <p className="font-semibold text-gray-900 dark:text-white">{sale.customer_name || t.walkInCustomer}</p>
+                    <p className="text-sm text-gray-500 dark:text-gray-400">{formatDate(sale.sale_date)}</p>
+                  </div>
+                  <div className="text-right">
+                    <p className="font-bold text-gray-900 dark:text-white">{formatCurrency(sale.total_amount)}</p>
+                    <p className="text-sm text-primary-600">+{formatCurrency(sale.profit)} {t.profit}</p>
+                  </div>
+                </div>
+                <p className="text-sm text-gray-600 dark:text-gray-300 mb-2">{sale.items || '-'}</p>
+                <div className="flex items-center gap-4 text-sm flex-wrap">
+                  <span className="text-gray-500">{t.amountPaid}: <span className="text-green-600 font-medium">{formatCurrency(sale.amount_paid)}</span></span>
+                  {sale.due_amount > 0 && <span className="text-gray-500">{t.due}: <span className="text-red-600 font-medium">{formatCurrency(sale.due_amount)}</span></span>}
+                  {isPaid && <span className="text-green-600 font-medium text-xs bg-green-50 dark:bg-green-900/20 px-2 py-0.5 rounded-full">{t.paid}</span>}
+                </div>
+                {sale.customer_id && sale.due_amount > 0 && (
+                  <div className="mt-3 pt-3 border-t dark:border-gray-700">
+                    {isEditing ? (
+                      <div className="flex gap-2 items-center">
+                        <span className="text-sm text-gray-500">{t.amountPaid}:</span>
+                        <input type="number" value={editPaymentAmount} onChange={e => setEditPaymentAmount(e.target.value)} className="input w-32 text-sm py-1" min="0" step="0.01" placeholder="0" />
+                        <button onClick={() => handleUpdatePayment(sale.id)} disabled={updatingPayment === sale.id} className="btn-primary text-xs px-3 py-1">{updatingPayment === sale.id ? t.loading : t.confirm}</button>
+                        <button onClick={() => { setEditingSaleId(null); setEditPaymentAmount(''); }} className="btn-secondary text-xs px-3 py-1">{t.cancel}</button>
+                      </div>
+                    ) : (
+                      <button onClick={() => { setEditingSaleId(sale.id); setEditPaymentAmount(String(sale.amount_paid)); }} className="text-sm text-primary-600 hover:text-primary-700 font-medium flex items-center gap-1">
+                        <DollarSign className="w-3 h-3" /> {t.recordPayment}
+                      </button>
+                    )}
+                  </div>
+                )}
+                {sale.customer_id && sale.due_amount <= 0 && sale.amount_paid > 0 && (
+                  <div className="mt-3 pt-3 border-t dark:border-gray-700">
+                    {isEditing ? (
+                      <div className="flex gap-2 items-center">
+                        <span className="text-sm text-gray-500">{t.amountPaid}:</span>
+                        <input type="number" value={editPaymentAmount} onChange={e => setEditPaymentAmount(e.target.value)} className="input w-32 text-sm py-1" min="0" step="0.01" placeholder="0" />
+                        <button onClick={() => handleUpdatePayment(sale.id)} disabled={updatingPayment === sale.id} className="btn-primary text-xs px-3 py-1">{updatingPayment === sale.id ? t.loading : t.confirm}</button>
+                        <button onClick={() => { setEditingSaleId(null); setEditPaymentAmount(''); }} className="btn-secondary text-xs px-3 py-1">{t.cancel}</button>
+                      </div>
+                    ) : (
+                      <button onClick={() => { setEditingSaleId(sale.id); setEditPaymentAmount(String(sale.amount_paid)); }} className="text-sm text-gray-400 hover:text-primary-600 font-medium flex items-center gap-1">
+                        <DollarSign className="w-3 h-3" /> {t.editSale}
+                      </button>
+                    )}
+                  </div>
+                )}
+              </div>
+            );
+          })}</div>
           <Pagination page={page} total={totalSales} limit={PAGE_LIMIT} onChange={setPage} />
         </>
       ) : (
@@ -198,7 +314,7 @@ export default function Sales() {
         <div className="flex items-center justify-between p-4 border-b dark:border-gray-600 sticky top-0 bg-white dark:bg-gray-800"><h2 className="text-lg font-semibold text-gray-900 dark:text-white">{t.newSale}</h2><button onClick={() => setShowNewSale(false)} className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg"><X className="w-5 h-5" /></button></div>
         {saleError && <div className="mx-4 mt-4 p-3 bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-300 rounded-lg text-sm">{saleError}</div>}
         <form onSubmit={handleNewSale} className="p-4 space-y-4">
-          <div><label className="label">{t.selectCustomer} ({t.optional})</label><select value={saleCustomerId} onChange={e => setSaleCustomerId(e.target.value)} className="input"><option value="">{t.walkInCustomer}</option>{customers.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}</select></div>
+          <div><label className="label">{t.selectCustomer} ({t.optional})</label><CustomerSearch customers={customers} value={saleCustomerId} onChange={setSaleCustomerId} placeholder={t.walkInCustomer} walkInLabel={t.walkInCustomer} /></div>
           <div><div className="flex items-center justify-between mb-2"><label className="label mb-0">{t.inventory}</label><button type="button" onClick={addSaleItem} className="text-sm text-primary-600 font-medium flex items-center gap-1"><Plus className="w-3 h-3" /> {t.addProduct}</button></div>{saleItems.length === 0 && <p className="text-sm text-gray-400">{t.addAtLeastOne}</p>}{saleItems.map((item, i) => { const product = products.find(p => p.id === item.product_id); return (<div key={i} className="flex gap-2 mb-2"><select value={item.product_id} onChange={e => updateSaleItem(i, 'product_id', e.target.value)} className="input flex-1"><option value="">{t.selectProduct}</option>{products.map(p => <option key={p.id} value={p.id}>{p.name} ({p.stock} {t.stock})</option>)}</select><input type="number" value={item.quantity} onChange={e => updateSaleItem(i, 'quantity', e.target.value)} className="input w-20" min="1" />{product && <span className="text-sm text-gray-500 self-center whitespace-nowrap">{formatCurrency(product.selling_price * item.quantity)}</span>}<button type="button" onClick={() => removeSaleItem(i)} className="p-2 text-gray-400 hover:text-red-500"><X className="w-4 h-4" /></button></div>); })}</div>
           {saleItems.length > 0 && <div className="p-3 bg-gray-50 dark:bg-gray-700 rounded-lg"><div className="flex justify-between text-sm"><span className="text-gray-500">{t.total}</span><span className="font-bold text-lg text-gray-900 dark:text-white">{formatCurrency(getSaleTotal())}</span></div></div>}
           <div><label className="label">{t.amountPaid}</label><input type="number" value={salePaid} onChange={e => setSalePaid(e.target.value)} className="input" min="0" step="0.01" placeholder="0" />{saleCustomerId && parseFloat(salePaid) < getSaleTotal() && parseFloat(salePaid) > 0 && <p className="text-xs text-orange-600 mt-1">{t.due}: {formatCurrency(getSaleTotal() - parseFloat(salePaid))}</p>}</div>
@@ -211,7 +327,7 @@ export default function Sales() {
         <div className="flex items-center justify-between p-4 border-b dark:border-gray-600 sticky top-0 bg-white dark:bg-gray-800"><h2 className="text-lg font-semibold text-gray-900 dark:text-white">{t.newOrder}</h2><button onClick={() => setShowNewOrder(false)} className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg"><X className="w-5 h-5" /></button></div>
         {orderError && <div className="mx-4 mt-4 p-3 bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-300 rounded-lg text-sm">{orderError}</div>}
         <form onSubmit={handleNewOrder} className="p-4 space-y-4">
-          <div><label className="label">{t.selectCustomer}</label><select value={orderCustomerId} onChange={e => setOrderCustomerId(e.target.value)} className="input"><option value="">{t.selectCustomer}</option>{customers.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}</select></div>
+          <div><label className="label">{t.selectCustomer}</label><CustomerSearch customers={customers} value={orderCustomerId} onChange={setOrderCustomerId} placeholder={t.selectCustomer} walkInLabel={t.walkInCustomer} /></div>
           <div><div className="flex items-center justify-between mb-2"><label className="label mb-0">{t.inventory}</label><button type="button" onClick={addOrderItem} className="text-sm text-primary-600 font-medium flex items-center gap-1"><Plus className="w-3 h-3" /> {t.addProduct}</button></div>{orderItems.length === 0 && <p className="text-sm text-gray-400">{t.addAtLeastOne}</p>}{orderItems.map((item, i) => { const product = products.find(p => p.id === item.product_id); return (<div key={i} className="flex gap-2 mb-2"><select value={item.product_id} onChange={e => updateOrderItem(i, 'product_id', e.target.value)} className="input flex-1"><option value="">{t.selectProduct}</option>{products.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}</select><input type="number" value={item.quantity} onChange={e => updateOrderItem(i, 'quantity', e.target.value)} className="input w-20" min="1" />{product && <span className="text-sm text-gray-500 self-center whitespace-nowrap">{formatCurrency(product.selling_price * item.quantity)}</span>}<button type="button" onClick={() => removeOrderItem(i)} className="p-2 text-gray-400 hover:text-red-500"><X className="w-4 h-4" /></button></div>); })}</div>
           <div className="grid grid-cols-2 gap-4"><div><label className="label">{t.amountPaid}</label><input type="number" value={orderPaid} onChange={e => setOrderPaid(e.target.value)} className="input" min="0" step="0.01" placeholder="0" /></div><div><label className="label">{t.expectedDate}</label><input type="date" value={orderExpectedDate} onChange={e => setOrderExpectedDate(e.target.value)} className="input" /></div></div>
           <div><label className="label">{t.notes}</label><textarea value={orderNotes} onChange={e => setOrderNotes(e.target.value)} className="input" rows={2} placeholder={t.optional} /></div>

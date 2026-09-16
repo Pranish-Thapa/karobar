@@ -113,6 +113,8 @@ const en = {
   from: 'From',
   to: 'To',
   clearFilters: 'Clear filters',
+  editSale: 'Edit Sale',
+  paid: 'Paid',
 
   // Returns
   processReturn: 'Process Return',

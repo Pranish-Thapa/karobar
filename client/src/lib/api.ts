@@ -79,6 +79,7 @@ export const api = {
       return request(`/sales${sp.toString() ? `?${sp}` : ''}`);
     },
     create: (data: any) => request('/sales', { method: 'POST', body: JSON.stringify(data) }),
+    update: (id: string, data: any) => request(`/sales/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
   },
   returns: {
     list: () => request('/returns'),

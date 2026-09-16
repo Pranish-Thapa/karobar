@@ -506,6 +506,29 @@ app.get('/api/sales', auth, ensureDb, apiLimiter, async (req, res) => {
   } catch (err) { res.status(500).json({ error: sanitizeError(err) }); }
 });
 
+app.put('/api/sales/:id', auth, ensureDb, [
+  body('amount_paid').isFloat({ min: 0 }).withMessage('Amount paid must be non-negative'),
+], validate, async (req, res) => {
+  try {
+    const { amount_paid } = req.body;
+    const result = await transaction(async (client) => {
+      const saleRes = await client.query('SELECT * FROM sales WHERE id = $1 AND user_id = $2 FOR UPDATE', [req.params.id, req.userId]);
+      if (saleRes.rows.length === 0) throw new Error('Sale not found');
+      const sale = saleRes.rows[0];
+      const capped = Math.min(amount_paid, Number(sale.total_amount));
+      const newDue = Math.max(0, Number(sale.total_amount) - capped);
+      const oldDue = Number(sale.due_amount);
+      const dueDelta = oldDue - newDue;
+      await client.query('UPDATE sales SET amount_paid = $1, due_amount = $2 WHERE id = $3', [capped, newDue, req.params.id]);
+      if (sale.customer_id) {
+        await client.query('UPDATE customers SET total_paid = GREATEST(0, total_paid + $1), outstanding_dues = GREATEST(0, outstanding_dues - $2), updated_at = CURRENT_TIMESTAMP WHERE id = $3', [amount_paid, dueDelta, sale.customer_id]);
+      }
+      return (await client.query('SELECT * FROM sales WHERE id = $1', [req.params.id])).rows[0];
+    });
+    res.json(result);
+  } catch (err) { res.status(400).json({ error: err.message }); }
+});
+
 // ==================== DASHBOARD ====================
 app.get('/api/dashboard', auth, ensureDb, async (req, res) => {
   try {
