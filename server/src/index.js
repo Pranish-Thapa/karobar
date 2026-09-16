@@ -14,6 +14,9 @@ const path = require('path');
 const app = express();
 const PORT = process.env.PORT || 5000;
 
+// Trust proxy (Render uses reverse proxy)
+app.set('trust proxy', 1);
+
 // Security
 app.use(helmet({ contentSecurityPolicy: false }));
 app.use(cors({
