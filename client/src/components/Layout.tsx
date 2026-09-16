@@ -1,6 +1,6 @@
 import { useState, ReactNode } from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import { LayoutDashboard, Users, Package, ShoppingCart, TrendingUp, Bell, Settings, Menu, X, Store, Sun, Moon } from 'lucide-react';
+import { LayoutDashboard, Users, Package, ShoppingCart, TrendingUp, Bell, Settings, Menu, X, Store, Sun, Moon, Globe } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useDarkMode } from '../context/DarkModeContext';
 import { useI18n } from '../context/I18nContext';
@@ -20,7 +20,7 @@ export default function Layout({ children }: { children: ReactNode }) {
   const location = useLocation();
   const { user, logout } = useAuth();
   const { dark, toggle } = useDarkMode();
-  const { t } = useI18n();
+  const { t, lang, setLanguage } = useI18n();
 
   return (
     <div className="min-h-screen flex dark:bg-gray-900">
@@ -46,10 +46,16 @@ export default function Layout({ children }: { children: ReactNode }) {
           ))}
         </nav>
         <div className="p-4 border-t border-gray-100 dark:border-gray-700">
-          <button onClick={toggle} className="flex items-center gap-2 text-sm text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 mb-3 px-1">
-            {dark ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
-            {dark ? t.english : t.nepali}
-          </button>
+          <div className="flex items-center gap-2 mb-3">
+            <button onClick={toggle} className="flex items-center gap-2 text-sm text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 px-2 py-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 flex-1">
+              {dark ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
+              {dark ? 'Light' : 'Dark'}
+            </button>
+            <button onClick={() => setLanguage(lang === 'en' ? 'ne' : 'en')} className="flex items-center gap-2 text-sm text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 px-2 py-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 flex-1">
+              <Globe className="w-4 h-4" />
+              {lang === 'en' ? 'नेपाली' : 'English'}
+            </button>
+          </div>
           <div className="flex items-center gap-3 mb-3">
             <div className="w-9 h-9 bg-primary-100 dark:bg-primary-900/30 rounded-full flex items-center justify-center">
               <span className="text-primary-700 dark:text-primary-300 font-medium text-sm">{user?.name?.charAt(0)}</span>
@@ -71,7 +77,10 @@ export default function Layout({ children }: { children: ReactNode }) {
           </div>
           <span className="font-bold text-gray-900 dark:text-white">Karobar</span>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-1">
+          <button onClick={() => setLanguage(lang === 'en' ? 'ne' : 'en')} className="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 text-xs font-medium text-gray-600 dark:text-gray-300">
+            {lang === 'en' ? 'नेपा' : 'EN'}
+          </button>
           <button onClick={toggle} className="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700">
             {dark ? <Sun className="w-5 h-5 text-gray-600 dark:text-gray-300" /> : <Moon className="w-5 h-5 text-gray-600 dark:text-gray-300" />}
           </button>
