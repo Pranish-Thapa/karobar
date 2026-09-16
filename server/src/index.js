@@ -60,9 +60,9 @@ app.post('/api/auth/login', ensureDb, async (req, res) => {
 });
 
 app.get('/api/auth/me', auth, ensureDb, async (req, res) => {
-  const user = await get('SELECT id, name, email, shop_name FROM users WHERE id = $1', [req.userId]);
+  const user = await get('SELECT id, name, email, shop_name, language FROM users WHERE id = $1', [req.userId]);
   if (!user) return res.status(404).json({ error: 'User not found' });
-  res.json({ id: user.id, name: user.name, email: user.email, shopName: user.shop_name });
+  res.json({ id: user.id, name: user.name, email: user.email, shopName: user.shop_name, language: user.language || 'en' });
 });
 
 // CUSTOMERS
@@ -435,6 +435,96 @@ app.delete('/api/devices/:id', auth, ensureDb, async (req, res) => {
 app.get('/api/categories', auth, ensureDb, async (req, res) => {
   const categories = await all('SELECT DISTINCT category FROM products WHERE user_id = $1 ORDER BY category', [req.userId]);
   res.json(categories.map(c => c.category));
+});
+
+// RETURNS
+app.post('/api/returns', auth, ensureDb, async (req, res) => {
+  try {
+    const { sale_id, product_id, quantity, reason, notes } = req.body;
+    if (!sale_id || !product_id || !quantity || quantity <= 0) return res.status(400).json({ error: 'Sale, product, and valid quantity are required' });
+    const sale = await get('SELECT * FROM sales WHERE id = $1 AND user_id = $2', [sale_id, req.userId]);
+    if (!sale) return res.status(404).json({ error: 'Sale not found' });
+    const saleItem = await get('SELECT * FROM sale_items WHERE sale_id = $1 AND product_id = $2', [sale_id, product_id]);
+    if (!saleItem) return res.status(400).json({ error: 'Product not found in this sale' });
+    if (quantity > saleItem.quantity) return res.status(400).json({ error: `Cannot return more than sold (${saleItem.quantity})` });
+    const refund = saleItem.selling_price * quantity;
+    const id = uuidv4();
+    await run('INSERT INTO returns (id, user_id, sale_id, customer_id, product_id, quantity, reason, refund_amount, notes) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)', [id, req.userId, sale_id, sale.customer_id, product_id, quantity, reason || '', refund, notes || '']);
+    await run('UPDATE products SET stock = stock + $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2', [quantity, product_id]);
+    await run('UPDATE sales SET total_amount = total_amount - $1, profit = profit - ($1 - $2 * $3), amount_paid = GREATEST(0, amount_paid - $1), due_amount = GREATEST(0, due_amount - $1) WHERE id = $4', [refund, saleItem.actual_price, quantity, sale_id]);
+    if (sale.customer_id) await run('UPDATE customers SET total_purchases = GREATEST(0, total_purchases - $1), outstanding_dues = GREATEST(0, outstanding_dues - $1), updated_at = CURRENT_TIMESTAMP WHERE id = $2', [refund, sale.customer_id]);
+    const ret = await get('SELECT * FROM returns WHERE id = $1', [id]);
+    res.json(ret);
+  } catch (err) { res.status(400).json({ error: err.message }); }
+});
+
+app.get('/api/returns', auth, ensureDb, async (req, res) => {
+  const returns = await all(`SELECT r.*, p.name as product_name, c.name as customer_name FROM returns r LEFT JOIN products p ON p.id = r.product_id LEFT JOIN customers c ON c.id = r.customer_id WHERE r.user_id = $1 ORDER BY r.return_date DESC`, [req.userId]);
+  res.json(returns);
+});
+
+// INVENTORY ADJUSTMENTS
+app.post('/api/inventory/adjust', auth, ensureDb, async (req, res) => {
+  try {
+    const { product_id, adjustment, reason, notes } = req.body;
+    if (!product_id || adjustment === undefined || adjustment === 0) return res.status(400).json({ error: 'Product and adjustment amount are required' });
+    const product = await get('SELECT * FROM products WHERE id = $1 AND user_id = $2', [product_id, req.userId]);
+    if (!product) return res.status(404).json({ error: 'Product not found' });
+    const newStock = product.stock + adjustment;
+    if (newStock < 0) return res.status(400).json({ error: `Cannot adjust below zero. Current stock: ${product.stock}` });
+    const id = uuidv4();
+    await run('INSERT INTO inventory_adjustments (id, user_id, product_id, adjustment, reason, previous_stock, new_stock, notes) VALUES ($1,$2,$3,$4,$5,$6,$7,$8)', [id, req.userId, product_id, adjustment, reason || 'Manual adjustment', product.stock, newStock, notes || '']);
+    await run('UPDATE products SET stock = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2', [newStock, product_id]);
+    if (newStock <= product.low_stock_threshold) {
+      const existing = await get('SELECT id FROM notifications WHERE user_id = $1 AND entity_id = $2 AND type = $3 AND read = FALSE', [req.userId, product_id, 'low_stock']);
+      if (!existing) await run('INSERT INTO notifications (id, user_id, type, title, message, entity_id, entity_type) VALUES ($1,$2,$3,$4,$5,$6,$7)', [uuidv4(), req.userId, 'low_stock', 'Low Stock Alert', `${product.name} is low in stock. Only ${newStock} units remaining.`, product_id, 'product']);
+    }
+    const adj = await get('SELECT * FROM inventory_adjustments WHERE id = $1', [id]);
+    res.json(adj);
+  } catch (err) { res.status(400).json({ error: err.message }); }
+});
+
+app.get('/api/inventory/adjustments', auth, ensureDb, async (req, res) => {
+  const adjustments = await all(`SELECT ia.*, p.name as product_name FROM inventory_adjustments ia LEFT JOIN products p ON p.id = ia.product_id WHERE ia.user_id = $1 ORDER BY ia.adjusted_at DESC`, [req.userId]);
+  res.json(adjustments);
+});
+
+// BULK PRODUCT IMPORT
+app.post('/api/products/import', auth, ensureDb, async (req, res) => {
+  try {
+    const { products } = req.body;
+    if (!products || !Array.isArray(products) || products.length === 0) return res.status(400).json({ error: 'No products to import' });
+    if (products.length > 1000) return res.status(400).json({ error: 'Maximum 1000 products per import' });
+    let imported = 0;
+    const errors = [];
+    for (let i = 0; i < products.length; i++) {
+      const p = products[i];
+      const row = i + 1;
+      if (!p.name || !p.name.trim()) { errors.push({ row, reason: 'Name is required' }); continue; }
+      const actual = parseFloat(p.actual_price) || 0;
+      const selling = parseFloat(p.selling_price) || 0;
+      const stock = parseInt(p.stock) || 0;
+      if (actual < 0) { errors.push({ row, reason: 'Cost price cannot be negative' }); continue; }
+      if (selling < 0) { errors.push({ row, reason: 'Selling price cannot be negative' }); continue; }
+      if (stock < 0) { errors.push({ row, reason: 'Stock cannot be negative' }); continue; }
+      const id = uuidv4();
+      await run('INSERT INTO products (id, user_id, name, sku, category, actual_price, selling_price, stock, low_stock_threshold, unit, description) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)', [id, req.userId, p.name.trim(), p.sku || '', p.category || 'General', actual, selling, stock, parseInt(p.low_stock_threshold) || 5, p.unit || 'pcs', p.description || '']);
+      imported++;
+      if (stock <= (parseInt(p.low_stock_threshold) || 5)) {
+        await run('INSERT INTO notifications (id, user_id, type, title, message, entity_id, entity_type) VALUES ($1,$2,$3,$4,$5,$6,$7)', [uuidv4(), req.userId, 'low_stock', 'Low Stock Alert', `${p.name.trim()} is low in stock. Only ${stock} units remaining.`, id, 'product']);
+      }
+    }
+    res.json({ imported, errors, total: products.length });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// LANGUAGE
+app.put('/api/settings/language', auth, ensureDb, async (req, res) => {
+  try {
+    const { language } = req.body;
+    await run('UPDATE users SET language = $1 WHERE id = $2', [language || 'en', req.userId]);
+    res.json({ message: 'Language updated' });
+  } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
 app.put('/api/settings/shop', auth, ensureDb, async (req, res) => {

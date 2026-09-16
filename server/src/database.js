@@ -26,6 +26,7 @@ async function initTables() {
       CREATE TABLE IF NOT EXISTS users (
         id TEXT PRIMARY KEY, name TEXT NOT NULL, email TEXT UNIQUE NOT NULL,
         password_hash TEXT NOT NULL, shop_name TEXT DEFAULT 'My Shop',
+        language TEXT DEFAULT 'en',
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       )
     `);
@@ -124,6 +125,29 @@ async function initTables() {
         entity_id TEXT, entity_type TEXT,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         FOREIGN KEY (user_id) REFERENCES users(id)
+      )
+    `);
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS returns (
+        id TEXT PRIMARY KEY, user_id TEXT NOT NULL, sale_id TEXT NOT NULL,
+        customer_id TEXT, product_id TEXT NOT NULL, quantity INTEGER NOT NULL,
+        reason TEXT, refund_amount NUMERIC NOT NULL DEFAULT 0,
+        return_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP, status TEXT DEFAULT 'completed',
+        notes TEXT,
+        FOREIGN KEY (user_id) REFERENCES users(id),
+        FOREIGN KEY (sale_id) REFERENCES sales(id),
+        FOREIGN KEY (customer_id) REFERENCES customers(id),
+        FOREIGN KEY (product_id) REFERENCES products(id)
+      )
+    `);
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS inventory_adjustments (
+        id TEXT PRIMARY KEY, user_id TEXT NOT NULL, product_id TEXT NOT NULL,
+        adjustment INTEGER NOT NULL, reason TEXT NOT NULL,
+        previous_stock INTEGER NOT NULL, new_stock INTEGER NOT NULL,
+        adjusted_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, notes TEXT,
+        FOREIGN KEY (user_id) REFERENCES users(id),
+        FOREIGN KEY (product_id) REFERENCES products(id)
       )
     `);
   } finally {
