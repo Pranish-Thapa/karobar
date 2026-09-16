@@ -701,10 +701,21 @@ app.put('/api/settings/shop', auth, async (req, res) => {
 const path = require('path');
 const publicDir = path.join(__dirname, '..', 'public');
 app.use(express.static(publicDir));
-app.get('*', (req, res) => {
-  if (!req.path.startsWith('/api')) {
-    res.sendFile(path.join(publicDir, 'index.html'));
+
+// SPA fallback - serve index.html for non-API routes
+app.use((req, res, next) => {
+  if (req.path.startsWith('/api')) {
+    return res.status(404).json({ error: 'API route not found' });
   }
+  res.sendFile(path.join(publicDir, 'index.html'), err => {
+    if (err) res.status(404).send('Not found');
+  });
+});
+
+// Global error handler
+app.use((err, req, res, next) => {
+  console.error('Unhandled error:', err);
+  res.status(500).json({ error: 'Internal server error' });
 });
 
 app.listen(PORT, () => {
