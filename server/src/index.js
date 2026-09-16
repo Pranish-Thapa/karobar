@@ -126,16 +126,17 @@ app.get('/api/auth/me', auth, ensureDb, async (req, res) => {
 app.get('/api/customers', auth, ensureDb, apiLimiter, async (req, res) => {
   try {
     const { search, page = 1, limit = 50 } = req.query;
-    const offset = (Math.max(1, parseInt(page)) - 1) * parseInt(limit);
-    const lim = Math.min(200, Math.max(1, parseInt(limit)));
+    const parsedPage = Math.max(1, parseInt(page) || 1);
+    const lim = Math.min(200, Math.max(1, parseInt(limit) || 50));
+    const offset = (parsedPage - 1) * lim;
     if (search) {
       const rows = await all('SELECT * FROM customers WHERE user_id = $1 AND (name ILIKE $2 OR phone ILIKE $2) ORDER BY name LIMIT $3 OFFSET $4', [req.userId, `%${search}%`, lim, offset]);
       const count = await get('SELECT COUNT(*) as total FROM customers WHERE user_id = $1 AND (name ILIKE $2 OR phone ILIKE $2)', [req.userId, `%${search}%`]);
-      res.json({ data: rows, total: parseInt(count.total), page: parseInt(page), limit: lim });
+      res.json({ data: rows, total: parseInt(count.total), page: parsedPage, limit: lim });
     } else {
       const rows = await all('SELECT * FROM customers WHERE user_id = $1 ORDER BY name LIMIT $2 OFFSET $3', [req.userId, lim, offset]);
       const count = await get('SELECT COUNT(*) as total FROM customers WHERE user_id = $1', [req.userId]);
-      res.json({ data: rows, total: parseInt(count.total), page: parseInt(page), limit: lim });
+      res.json({ data: rows, total: parseInt(count.total), page: parsedPage, limit: lim });
     }
   } catch (err) { res.status(500).json({ error: sanitizeError(err) }); }
 });
@@ -178,8 +179,9 @@ app.put('/api/customers/:id', auth, ensureDb, [
 ], validate, async (req, res) => {
   try {
     const { name, phone, address, notes } = req.body;
-    const result = await run('UPDATE customers SET name=$1, phone=$2, address=$3, notes=$4, updated_at=CURRENT_TIMESTAMP WHERE id=$5 AND user_id=$6', [name, phone || null, address || null, notes || null, req.params.id, req.userId]);
-    if (result.rowCount === 0) return res.status(404).json({ error: 'Customer not found' });
+    const existing = await get('SELECT * FROM customers WHERE id = $1 AND user_id = $2', [req.params.id, req.userId]);
+    if (!existing) return res.status(404).json({ error: 'Customer not found' });
+    const result = await run('UPDATE customers SET name=$1, phone=$2, address=$3, notes=$4, updated_at=CURRENT_TIMESTAMP WHERE id=$5 AND user_id=$6', [name, phone ?? existing.phone, address ?? existing.address, notes ?? existing.notes, req.params.id, req.userId]);
     const customer = await get('SELECT * FROM customers WHERE id = $1', [req.params.id]);
     res.json(customer);
   } catch (err) { res.status(500).json({ error: sanitizeError(err) }); }
@@ -188,11 +190,13 @@ app.put('/api/customers/:id', auth, ensureDb, [
 app.delete('/api/customers/:id', auth, ensureDb, async (req, res) => {
   try {
     await transaction(async (client) => {
+      const cust = await client.query('SELECT id FROM customers WHERE id = $1 AND user_id = $2', [req.params.id, req.userId]);
+      if (cust.rows.length === 0) throw new Error('Customer not found');
       await client.query('DELETE FROM customer_payments WHERE customer_id = $1', [req.params.id]);
       await client.query('DELETE FROM returns WHERE customer_id = $1', [req.params.id]);
       await client.query('UPDATE sales SET customer_id = NULL WHERE customer_id = $1', [req.params.id]);
       await client.query('UPDATE orders SET customer_id = NULL WHERE customer_id = $1', [req.params.id]);
-      await client.query('DELETE FROM customers WHERE id = $1 AND user_id = $2', [req.params.id, req.userId]);
+      await client.query('DELETE FROM customers WHERE id = $1', [req.params.id]);
     });
     res.json({ message: 'Customer deleted' });
   } catch (err) { res.status(500).json({ error: sanitizeError(err) }); }
@@ -231,8 +235,9 @@ app.post('/api/customers/:id/payments', auth, ensureDb, [
 app.get('/api/products', auth, ensureDb, apiLimiter, async (req, res) => {
   try {
     const { search, category, page = 1, limit = 50 } = req.query;
-    const offset = (Math.max(1, parseInt(page)) - 1) * parseInt(limit);
-    const lim = Math.min(200, Math.max(1, parseInt(limit)));
+    const parsedPage = Math.max(1, parseInt(page) || 1);
+    const lim = Math.min(200, Math.max(1, parseInt(limit) || 50));
+    const offset = (parsedPage - 1) * lim;
     let where = 'WHERE user_id = $1';
     const params = [req.userId];
     let paramIdx = 2;
@@ -242,7 +247,7 @@ app.get('/api/products', auth, ensureDb, apiLimiter, async (req, res) => {
     const rows = await all(`SELECT * FROM products ${where} ORDER BY name LIMIT $${paramIdx} OFFSET $${paramIdx + 1}`, params);
     const countParams = params.slice(0, -2);
     const count = await get(`SELECT COUNT(*) as total FROM products ${where}`, countParams);
-    res.json({ data: rows, total: parseInt(count.total), page: parseInt(page), limit: lim });
+    res.json({ data: rows, total: parseInt(count.total), page: parsedPage, limit: lim });
   } catch (err) { res.status(500).json({ error: sanitizeError(err) }); }
 });
 
@@ -280,11 +285,14 @@ app.put('/api/products/:id', auth, ensureDb, [
 ], validate, async (req, res) => {
   try {
     const { name, sku, category, actual_price, selling_price, stock, low_stock_threshold, unit, description } = req.body;
-    const result = await run('UPDATE products SET name=$1, sku=$2, category=$3, actual_price=$4, selling_price=$5, stock=$6, low_stock_threshold=$7, unit=$8, description=$9, updated_at=CURRENT_TIMESTAMP WHERE id=$10 AND user_id=$11', [name, sku || '', category || 'General', actual_price || 0, selling_price || 0, stock || 0, low_stock_threshold || 5, unit || 'pcs', description || '', req.params.id, req.userId]);
-    if (result.rowCount === 0) return res.status(404).json({ error: 'Product not found' });
-    if ((stock || 0) <= (low_stock_threshold || 5)) {
-      const existing = await get('SELECT id FROM notifications WHERE user_id = $1 AND entity_id = $2 AND type = $3 AND read = FALSE', [req.userId, req.params.id, 'low_stock']);
-      if (!existing) await run('INSERT INTO notifications (id, user_id, type, title, message, entity_id, entity_type) VALUES ($1,$2,$3,$4,$5,$6,$7)', [uuidv4(), req.userId, 'low_stock', 'Low Stock Alert', `${name} is low in stock. Only ${stock || 0} units remaining.`, req.params.id, 'product']);
+    const existing = await get('SELECT * FROM products WHERE id = $1 AND user_id = $2', [req.params.id, req.userId]);
+    if (!existing) return res.status(404).json({ error: 'Product not found' });
+    const result = await run('UPDATE products SET name=$1, sku=$2, category=$3, actual_price=$4, selling_price=$5, stock=$6, low_stock_threshold=$7, unit=$8, description=$9, updated_at=CURRENT_TIMESTAMP WHERE id=$10 AND user_id=$11', [name, sku ?? existing.sku, category ?? existing.category, actual_price ?? existing.actual_price, selling_price ?? existing.selling_price, stock ?? existing.stock, low_stock_threshold ?? existing.low_stock_threshold, unit ?? existing.unit, description ?? existing.description, req.params.id, req.userId]);
+    const finalStock = stock ?? existing.stock;
+    const finalThreshold = low_stock_threshold ?? existing.low_stock_threshold;
+    if (finalStock <= finalThreshold) {
+      const existingNotif = await get('SELECT id FROM notifications WHERE user_id = $1 AND entity_id = $2 AND type = $3 AND read = FALSE', [req.userId, req.params.id, 'low_stock']);
+      if (!existingNotif) await run('INSERT INTO notifications (id, user_id, type, title, message, entity_id, entity_type) VALUES ($1,$2,$3,$4,$5,$6,$7)', [uuidv4(), req.userId, 'low_stock', 'Low Stock Alert', `${name} is low in stock. Only ${finalStock} units remaining.`, req.params.id, 'product']);
     }
     const product = await get('SELECT * FROM products WHERE id = $1', [req.params.id]);
     res.json(product);
@@ -294,12 +302,14 @@ app.put('/api/products/:id', auth, ensureDb, [
 app.delete('/api/products/:id', auth, ensureDb, async (req, res) => {
   try {
     await transaction(async (client) => {
+      const prod = await client.query('SELECT id FROM products WHERE id = $1 AND user_id = $2', [req.params.id, req.userId]);
+      if (prod.rows.length === 0) throw new Error('Product not found');
       await client.query('DELETE FROM sale_items WHERE product_id = $1', [req.params.id]);
       await client.query('DELETE FROM order_items WHERE product_id = $1', [req.params.id]);
       await client.query('DELETE FROM returns WHERE product_id = $1', [req.params.id]);
       await client.query('DELETE FROM inventory_adjustments WHERE product_id = $1', [req.params.id]);
       await client.query('DELETE FROM notifications WHERE entity_id = $1 AND entity_type = $2', [req.params.id, 'product']);
-      await client.query('DELETE FROM products WHERE id = $1 AND user_id = $2', [req.params.id, req.userId]);
+      await client.query('DELETE FROM products WHERE id = $1', [req.params.id]);
     });
     res.json({ message: 'Product deleted' });
   } catch (err) { res.status(500).json({ error: sanitizeError(err) }); }
@@ -309,8 +319,9 @@ app.delete('/api/products/:id', auth, ensureDb, async (req, res) => {
 app.get('/api/orders', auth, ensureDb, apiLimiter, async (req, res) => {
   try {
     const { status, page = 1, limit = 50 } = req.query;
-    const offset = (Math.max(1, parseInt(page)) - 1) * parseInt(limit);
-    const lim = Math.min(200, Math.max(1, parseInt(limit)));
+    const parsedPage = Math.max(1, parseInt(page) || 1);
+    const lim = Math.min(200, Math.max(1, parseInt(limit) || 50));
+    const offset = (parsedPage - 1) * lim;
     let where = 'WHERE o.user_id = $1';
     const params = [req.userId];
     let paramIdx = 2;
@@ -325,7 +336,7 @@ app.get('/api/orders', auth, ensureDb, apiLimiter, async (req, res) => {
     `, params);
     const countParams = params.slice(0, -2);
     const count = await get(`SELECT COUNT(*) as total FROM orders o ${where}`, countParams);
-    res.json({ data: orders, total: parseInt(count.total), page: parseInt(page), limit: lim });
+    res.json({ data: orders, total: parseInt(count.total), page: parsedPage, limit: lim });
   } catch (err) { res.status(500).json({ error: sanitizeError(err) }); }
 });
 
@@ -471,8 +482,9 @@ app.post('/api/sales', auth, ensureDb, [
 app.get('/api/sales', auth, ensureDb, apiLimiter, async (req, res) => {
   try {
     const { search, from, to, page = 1, limit = 50 } = req.query;
-    const offset = (Math.max(1, parseInt(page)) - 1) * parseInt(limit);
-    const lim = Math.min(200, Math.max(1, parseInt(limit)));
+    const parsedPage = Math.max(1, parseInt(page) || 1);
+    const lim = Math.min(200, Math.max(1, parseInt(limit) || 50));
+    const offset = (parsedPage - 1) * lim;
 
     let where = 'WHERE s.user_id = $1';
     const whereParams = [req.userId];
@@ -490,7 +502,7 @@ app.get('/api/sales', auth, ensureDb, apiLimiter, async (req, res) => {
       dataParams
     );
     const count = await get(`SELECT COUNT(*) as total FROM sales s LEFT JOIN customers c ON c.id = s.customer_id ${where}`, whereParams);
-    res.json({ data: sales, total: parseInt(count.total), page: parseInt(page), limit: lim });
+    res.json({ data: sales, total: parseInt(count.total), page: parsedPage, limit: lim });
   } catch (err) { res.status(500).json({ error: sanitizeError(err) }); }
 });
 
@@ -639,8 +651,12 @@ app.post('/api/returns', auth, ensureDb, [
       await client.query('SELECT * FROM products WHERE id = $1 FOR UPDATE', [product_id]);
       await client.query('UPDATE products SET stock = stock + $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2', [quantity, product_id]);
       // Fix accounting: reduce total_amount and recalculate due_amount
+      const newTotal = Number(sale.total_amount) - refund;
+      const newDue = Math.max(0, newTotal - Number(sale.amount_paid));
+      const oldDue = Math.max(0, Number(sale.total_amount) - Number(sale.amount_paid));
+      const dueReduction = oldDue - newDue;
       await client.query('UPDATE sales SET total_amount = total_amount - $1, profit = profit - ($1 - $2 * $3), due_amount = GREATEST(0, total_amount - $1 - amount_paid) WHERE id = $4', [refund, saleItem.actual_price, quantity, sale_id]);
-      if (sale.customer_id) await client.query('UPDATE customers SET total_purchases = GREATEST(0, total_purchases - $1), outstanding_dues = GREATEST(0, outstanding_dues - $1), updated_at = CURRENT_TIMESTAMP WHERE id = $2', [refund, sale.customer_id]);
+      if (sale.customer_id) await client.query('UPDATE customers SET total_purchases = GREATEST(0, total_purchases - $1), outstanding_dues = GREATEST(0, outstanding_dues - $2), updated_at = CURRENT_TIMESTAMP WHERE id = $3', [refund, dueReduction, sale.customer_id]);
       return (await client.query('SELECT * FROM returns WHERE id = $1', [id])).rows[0];
     });
     res.json(result);

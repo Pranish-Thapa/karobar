@@ -14,6 +14,7 @@ export function formatRelative(date: string | Date): string {
   const now = new Date();
   const d = new Date(date);
   const diffMs = now.getTime() - d.getTime();
+  if (diffMs < 0) return formatDate(date);
   const diffMin = Math.floor(diffMs / 60000);
   if (diffMin < 1) return 'Just now';
   if (diffMin < 60) return `${diffMin}m ago`;
@@ -33,5 +34,5 @@ export function debounce<T extends (...args: any[]) => any>(fn: T, ms: number): 
 }
 
 export function getInitials(name: string): string {
-  return name?.split(' ').map(w => w[0]).join('').toUpperCase().slice(0, 2) || '?';
+  return name?.split(' ').filter(Boolean).map(w => w[0]).join('').toUpperCase().slice(0, 2) || '?';
 }

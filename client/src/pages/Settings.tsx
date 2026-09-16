@@ -90,7 +90,7 @@ export default function Settings() {
       await api.backup.download();
       const res = await api.backup.check();
       setLastBackup(res.lastBackup);
-      toast('success', 'Backup downloaded! Save it somewhere safe.');
+      toast('success', t.backupDownloaded);
     } catch (err: any) {
       toast('error', err.message);
     } finally {
@@ -119,7 +119,7 @@ export default function Settings() {
     setRestoring(true);
     try {
       await api.backup.restore(restoreFileRef.current);
-      toast('success', 'Database restored! Reloading...');
+      toast('success', t.restoreSuccess);
       setTimeout(() => window.location.reload(), 1500);
     } catch (err: any) {
       toast('error', err.message);
@@ -144,19 +144,19 @@ export default function Settings() {
 
       {/* Backup & Restore */}
       <div className="card mb-6">
-        <h2 className="text-lg font-semibold text-gray-900 dark:text-white flex items-center gap-2 mb-2"><Shield className="w-5 h-5" /> Backup & Restore</h2>
-        <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">Download a backup of your entire database. Auto-downloads every 10 days.</p>
+        <h2 className="text-lg font-semibold text-gray-900 dark:text-white flex items-center gap-2 mb-2"><Shield className="w-5 h-5" /> {t.backupRestore}</h2>
+        <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">{t.backupDesc}</p>
         {lastBackup && (
           <p className="text-xs text-gray-400 dark:text-gray-500 mb-3">Last backup: {new Date(lastBackup).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</p>
         )}
         <div className="flex gap-3">
           <button onClick={handleBackup} disabled={backingUp} className="btn-primary flex items-center gap-2">
             <Download className="w-4 h-4" />
-            {backingUp ? t.loading : 'Download Backup'}
+            {backingUp ? t.loading : t.downloadBackup}
           </button>
           <button onClick={handleRestoreClick} disabled={restoring} className="btn-secondary flex items-center gap-2">
             <Upload className="w-4 h-4" />
-            {restoring ? t.loading : 'Restore Backup'}
+            {restoring ? t.loading : t.restoreBackup}
           </button>
         </div>
       </div>
@@ -221,8 +221,8 @@ export default function Settings() {
 
       <ConfirmDialog
         open={showRestoreConfirm}
-        title="Restore Database"
-        message="This will REPLACE ALL your current data with the backup file. This cannot be undone. Are you sure?"
+        title={t.restoreBackup}
+        message={t.restoreConfirm}
         onConfirm={handleRestoreConfirm}
         onCancel={() => setShowRestoreConfirm(false)}
       />

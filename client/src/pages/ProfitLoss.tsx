@@ -3,12 +3,8 @@ import { TrendingUp, DollarSign, ShoppingCart, BarChart3, Award, Users } from 'l
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { api } from '../lib/api';
 import { useI18n } from '../context/I18nContext';
-import { formatCurrency } from '../lib/utils';
+import { formatCurrency, formatDate } from '../lib/utils';
 import { useToast } from '../components/Toast';
-
-function formatDate(dateStr: string) {
-  return new Date(dateStr).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
-}
 
 export default function ProfitLoss() {
   const { t } = useI18n();
@@ -23,7 +19,7 @@ export default function ProfitLoss() {
       .then(setData)
       .catch((err) => {
         console.error('Failed to load profit & loss data:', err);
-        toast('error', err.message || 'Failed to load profit & loss data');
+        toast('error', err.message || t.failedToLoad);
       })
       .finally(() => setLoading(false));
   }, [period]);
@@ -39,7 +35,7 @@ export default function ProfitLoss() {
 
   if (!data) return <div className="text-center py-12 text-gray-500">{t.noSalesData}</div>;
 
-  const { summary, mostProfitableSale, profitableProducts, topDuesCustomers } = data;
+  const { summary = {}, mostProfitableSale = null, profitableProducts = [], topDuesCustomers = [] } = data || {};
 
   return (
     <div className="pb-20 lg:pb-0">

@@ -16,6 +16,7 @@ export default function Sales() {
   const [orders, setOrders] = useState<any[]>([]);
   const [customers, setCustomers] = useState<any[]>([]);
   const [products, setProducts] = useState<any[]>([]);
+  const [allSalesForReturn, setAllSalesForReturn] = useState<any[]>([]);
   const [search, setSearch] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
   const [page, setPage] = useState(1);
@@ -66,6 +67,12 @@ export default function Sales() {
     api.products.list().then(p => setProducts(p.data || p || [])).catch(() => {});
     api.customers.list().then(c => setCustomers(c.data || c || [])).catch(() => {});
   }, []);
+
+  useEffect(() => {
+    if (showReturn) {
+      api.sales.list({ limit: 200 }).then(s => setAllSalesForReturn(s.data || [])).catch(() => {});
+    }
+  }, [showReturn]);
 
   const loadData = useCallback(async () => {
     setLoading(true);
@@ -216,7 +223,7 @@ export default function Sales() {
       {showReturn && <div className="fixed inset-0 z-50 bg-black/50 flex items-end sm:items-center justify-center p-0 sm:p-4"><div className="bg-white dark:bg-gray-800 rounded-t-2xl sm:rounded-2xl w-full sm:max-w-md">
         <div className="flex items-center justify-between p-4 border-b dark:border-gray-600"><h2 className="text-lg font-semibold text-gray-900 dark:text-white">{t.processReturn}</h2><button onClick={() => setShowReturn(false)} className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg"><X className="w-5 h-5" /></button></div>
         <form onSubmit={handleReturn} className="p-4 space-y-4">
-          <div><label className="label">{t.selectSale}</label><select value={returnSaleId} onChange={e => setReturnSaleId(e.target.value)} className="input" required><option value="">{t.selectSale}</option>{sales.map(s => <option key={s.id} value={s.id}>{formatDate(s.sale_date)} - {s.customer_name || t.walkInCustomer} - {formatCurrency(s.total_amount)}</option>)}</select></div>
+          <div><label className="label">{t.selectSale}</label><select value={returnSaleId} onChange={e => setReturnSaleId(e.target.value)} className="input" required><option value="">{t.selectSale}</option>{allSalesForReturn.map(s => <option key={s.id} value={s.id}>{formatDate(s.sale_date)} - {s.customer_name || t.walkInCustomer} - {formatCurrency(s.total_amount)}</option>)}</select></div>
           <div><label className="label">{t.selectProduct}</label><select value={returnProductId} onChange={e => setReturnProductId(e.target.value)} className="input" required><option value="">{t.selectProduct}</option>{products.map(p => <option key={p.id} value={p.id}>{p.name} ({p.stock} {t.stock})</option>)}</select></div>
           <div><label className="label">{t.quantity}</label><input type="number" value={returnQty} onChange={e => setReturnQty(e.target.value)} className="input" min="1" required /></div>
           <div><label className="label">{t.returnReason}</label><input type="text" value={returnReason} onChange={e => setReturnReason(e.target.value)} className="input" placeholder={t.optional} /></div>

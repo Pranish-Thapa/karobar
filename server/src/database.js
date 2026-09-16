@@ -178,6 +178,8 @@ async function initTables() {
       'CREATE INDEX IF NOT EXISTS idx_inventory_adjustments_user ON inventory_adjustments(user_id)',
       'CREATE INDEX IF NOT EXISTS idx_inventory_adjustments_product ON inventory_adjustments(product_id)',
       'CREATE INDEX IF NOT EXISTS idx_products_user_sku ON products(user_id, sku)',
+      'CREATE INDEX IF NOT EXISTS idx_qr_tokens_user ON qr_tokens(user_id)',
+      'CREATE INDEX IF NOT EXISTS idx_connected_devices_user ON connected_devices(user_id)',
     ];
     for (const idx of indexes) {
       await client.query(idx);

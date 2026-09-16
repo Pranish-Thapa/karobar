@@ -35,7 +35,7 @@ export default function Customers() {
     setLoading(true);
     api.customers.list(debouncedSearch || undefined, page, 20)
       .then(res => { setCustomers(res.data); setTotal(res.total); })
-      .catch(() => toast('error', 'Failed to load customers'))
+      .catch(() => toast('error', t.failedToLoad))
       .finally(() => setLoading(false));
   }, [debouncedSearch, page]);
 
@@ -48,10 +48,10 @@ export default function Customers() {
     try {
       if (editCustomer) {
         await api.customers.update(editCustomer.id, form);
-        toast('success', 'Customer updated');
+        toast('success', t.editCustomer + ' ' + t.success);
       } else {
         await api.customers.create(form);
-        toast('success', 'Customer added');
+        toast('success', t.addCustomer + ' ' + t.success);
       }
       setFormOpen(false);
       const res = await api.customers.list(debouncedSearch || undefined, page, 20);
@@ -64,7 +64,7 @@ export default function Customers() {
     if (!deleteTarget) return;
     try {
       await api.customers.delete(deleteTarget.id);
-      toast('success', 'Customer deleted');
+      toast('success', t.deleteCustomer + ' ' + t.success);
       setDeleteTarget(null);
       const res = await api.customers.list(debouncedSearch || undefined, page, 20);
       setCustomers(res.data); setTotal(res.total);

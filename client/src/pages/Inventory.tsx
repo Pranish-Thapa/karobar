@@ -60,7 +60,7 @@ export default function Inventory() {
     }
   };
   useEffect(() => { loadProducts(); }, [debouncedSearch, page]);
-  useEffect(() => { api.categories.list().then(setCategories); }, []);
+  useEffect(() => { api.categories.list().then(setCategories).catch(() => {}); }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault(); setError('');
@@ -69,7 +69,7 @@ export default function Inventory() {
       setSubmitting(true);
       if (editProduct) { await api.products.update(editProduct.id, data); } else { await api.products.create(data); }
       setShowModal(false); setEditProduct(null); setForm(emptyForm);
-      toast('success', editProduct ? 'Product updated' : 'Product added');
+      toast('success', editProduct ? t.editProduct + ' ' + t.success : t.addProduct + ' ' + t.success);
       loadProducts();
     } catch (err: any) {
       setError(err.message);
@@ -138,7 +138,7 @@ export default function Inventory() {
       setImporting(true);
       const result = await api.products.import(csvData);
       setImportResult(result); setCsvData([]); setCsvErrors([]);
-      toast('success', `Imported ${result.imported} products`);
+      toast('success', t.importSuccess.replace('{count}', String(result.imported)));
       loadProducts();
     } catch (err: any) {
       toast('error', err.message || 'Failed to import products');
@@ -161,7 +161,7 @@ export default function Inventory() {
       setAdjusting(true);
       await api.inventory.adjust({ product_id: adjustProduct.id, adjustment: adj, reason: adjustReason || 'Manual adjustment' });
       setShowAdjust(false); setAdjustProduct(null); setAdjustAmount(''); setAdjustReason('');
-      toast('success', 'Stock adjusted');
+      toast('success', t.adjustStock + ' ' + t.success);
       loadProducts();
     } catch (err: any) {
       toast('error', err.message || 'Failed to adjust stock');

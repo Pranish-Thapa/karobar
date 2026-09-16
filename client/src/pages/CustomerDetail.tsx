@@ -14,6 +14,7 @@ export default function CustomerDetail() {
   const { toast } = useToast();
   const [customer, setCustomer] = useState<any>(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
   const [showPayment, setShowPayment] = useState(false);
   const [paymentAmount, setPaymentAmount] = useState('');
   const [paymentError, setPaymentError] = useState('');
@@ -27,7 +28,9 @@ export default function CustomerDetail() {
 
   useEffect(() => {
     if (id) {
+      setLoading(true);
       api.customers.get(id).then(setCustomer).catch((err) => {
+        setError(err.message);
         toast('error', err.message);
       }).finally(() => setLoading(false));
     }
@@ -110,8 +113,12 @@ export default function CustomerDetail() {
     return <div className="flex justify-center py-12"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary-600"></div></div>;
   }
 
-  if (!customer) {
-    return <div className="text-center py-12 text-gray-500">{t.loading}</div>;
+  if (!loading && error) {
+    return <div className="text-center py-12 text-red-500">{error}</div>;
+  }
+
+  if (!loading && !customer) {
+    return <div className="text-center py-12 text-gray-500">{t.failedToLoad}</div>;
   }
 
   return (
