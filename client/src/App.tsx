@@ -1,9 +1,10 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
-import { Component, ReactNode } from 'react';
+import { Component, ReactNode, useEffect } from 'react';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { DarkModeProvider } from './context/DarkModeContext';
 import { I18nProvider } from './context/I18nContext';
-import { ToastProvider } from './components/Toast';
+import { ToastProvider, useToast } from './components/Toast';
+import { api } from './lib/api';
 import Layout from './components/Layout';
 import Login from './pages/Login';
 import Register from './pages/Register';
@@ -31,6 +32,29 @@ class ErrorBoundary extends Component<{ children: ReactNode }, { hasError: boole
   }
 }
 
+function AutoBackup() {
+  const { user } = useAuth();
+  const { toast } = useToast();
+
+  useEffect(() => {
+    if (!user) return;
+    const check = async () => {
+      try {
+        const res = await api.backup.check();
+        if (res.needsBackup) {
+          toast('info', 'Your 10-day backup is downloading now. Save it somewhere safe.');
+          await api.backup.download();
+        }
+      } catch (err) {
+        console.error('Auto-backup check failed:', err);
+      }
+    };
+    check();
+  }, [user]);
+
+  return null;
+}
+
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { user, loading } = useAuth();
   if (loading) return <div className="flex items-center justify-center h-screen"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary-600"></div></div>;
@@ -53,6 +77,7 @@ export default function App() {
           <I18nProvider>
             <ToastProvider>
               <BrowserRouter>
+                <AutoBackup />
                 <Routes>
                   <Route path="/login" element={<PublicRoute><Login /></PublicRoute>} />
                   <Route path="/register" element={<PublicRoute><Register /></PublicRoute>} />

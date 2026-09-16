@@ -1,10 +1,11 @@
-import { useState, useEffect } from 'react';
-import { Store, Smartphone, Laptop, Trash2, QrCode, RefreshCw, Sun, Moon, Globe } from 'lucide-react';
+import { useState, useEffect, useRef } from 'react';
+import { Store, Smartphone, Laptop, Trash2, QrCode, RefreshCw, Sun, Moon, Globe, Download, Upload, Shield } from 'lucide-react';
 import { api } from '../lib/api';
 import { useAuth } from '../context/AuthContext';
 import { useDarkMode } from '../context/DarkModeContext';
 import { useI18n } from '../context/I18nContext';
 import { useToast } from '../components/Toast';
+import ConfirmDialog from '../components/ConfirmDialog';
 
 export default function Settings() {
   const { user, updateUser } = useAuth();
@@ -20,8 +21,16 @@ export default function Settings() {
   const [devices, setDevices] = useState<any[]>([]);
   const [devicesLoading, setDevicesLoading] = useState(true);
   const [disconnectingId, setDisconnectingId] = useState<string | null>(null);
+  const [lastBackup, setLastBackup] = useState<string | null>(null);
+  const [backingUp, setBackingUp] = useState(false);
+  const [restoring, setRestoring] = useState(false);
+  const [showRestoreConfirm, setShowRestoreConfirm] = useState(false);
+  const restoreFileRef = useRef<File | null>(null);
 
-  useEffect(() => { api.devices.list().then(setDevices).finally(() => setDevicesLoading(false)); }, []);
+  useEffect(() => {
+    api.devices.list().then(setDevices).finally(() => setDevicesLoading(false));
+    api.backup.check().then(res => setLastBackup(res.lastBackup)).catch(() => {});
+  }, []);
 
   const handleSaveShop = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -65,6 +74,50 @@ export default function Settings() {
     }
   };
 
+  const handleBackup = async () => {
+    setBackingUp(true);
+    try {
+      await api.backup.download();
+      const res = await api.backup.check();
+      setLastBackup(res.lastBackup);
+      toast('success', 'Backup downloaded! Save it somewhere safe.');
+    } catch (err: any) {
+      toast('error', err.message);
+    } finally {
+      setBackingUp(false);
+    }
+  };
+
+  const handleRestoreClick = () => {
+    restoreFileRef.current = null;
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = '.sql';
+    input.onchange = (e: any) => {
+      const file = e.target.files?.[0];
+      if (file) {
+        restoreFileRef.current = file;
+        setShowRestoreConfirm(true);
+      }
+    };
+    input.click();
+  };
+
+  const handleRestoreConfirm = async () => {
+    if (!restoreFileRef.current) return;
+    setShowRestoreConfirm(false);
+    setRestoring(true);
+    try {
+      await api.backup.restore(restoreFileRef.current);
+      toast('success', 'Database restored! Reloading...');
+      setTimeout(() => window.location.reload(), 1500);
+    } catch (err: any) {
+      toast('error', err.message);
+    } finally {
+      setRestoring(false);
+    }
+  };
+
   return (
     <div className="pb-20 lg:pb-0 max-w-2xl mx-auto">
       <h1 className="text-2xl font-bold text-gray-900 dark:text-white mb-6">{t.settings}</h1>
@@ -77,6 +130,25 @@ export default function Settings() {
           {message && <p className="text-sm text-primary-600">{message}</p>}
           <button type="submit" disabled={saving} className="btn-primary">{saving ? t.loading : t.saveChanges}</button>
         </form>
+      </div>
+
+      {/* Backup & Restore */}
+      <div className="card mb-6">
+        <h2 className="text-lg font-semibold text-gray-900 dark:text-white flex items-center gap-2 mb-2"><Shield className="w-5 h-5" /> Backup & Restore</h2>
+        <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">Download a backup of your entire database. Auto-downloads every 10 days.</p>
+        {lastBackup && (
+          <p className="text-xs text-gray-400 dark:text-gray-500 mb-3">Last backup: {new Date(lastBackup).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</p>
+        )}
+        <div className="flex gap-3">
+          <button onClick={handleBackup} disabled={backingUp} className="btn-primary flex items-center gap-2">
+            <Download className="w-4 h-4" />
+            {backingUp ? t.loading : 'Download Backup'}
+          </button>
+          <button onClick={handleRestoreClick} disabled={restoring} className="btn-secondary flex items-center gap-2">
+            <Upload className="w-4 h-4" />
+            {restoring ? t.loading : 'Restore Backup'}
+          </button>
+        </div>
       </div>
 
       {/* Language & Theme */}
@@ -136,6 +208,14 @@ export default function Settings() {
           </div>
         ))}</div>}
       </div>
+
+      <ConfirmDialog
+        open={showRestoreConfirm}
+        title="Restore Database"
+        message="This will REPLACE ALL your current data with the backup file. This cannot be undone. Are you sure?"
+        onConfirm={handleRestoreConfirm}
+        onCancel={() => setShowRestoreConfirm(false)}
+      />
     </div>
   );
 }

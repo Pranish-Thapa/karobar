@@ -197,6 +197,14 @@ const en = {
   validAmountRequired: 'Valid payment amount is required',
   paymentExceedsDue: 'Payment amount exceeds outstanding dues',
   addAtLeastOne: 'Add at least one product',
+  backupRestore: 'Backup & Restore',
+  backupDesc: 'Download a backup of your entire database. Auto-downloads every 10 days.',
+  downloadBackup: 'Download Backup',
+  restoreBackup: 'Restore Backup',
+  lastBackup: 'Last backup',
+  backupDownloaded: 'Backup downloaded! Save it somewhere safe.',
+  restoreConfirm: 'This will REPLACE ALL your current data with the backup file. This cannot be undone. Are you sure?',
+  restoreSuccess: 'Database restored! Reloading...',
 };
 
 export default en;

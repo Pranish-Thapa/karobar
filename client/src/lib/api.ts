@@ -112,4 +112,36 @@ export const api = {
     updateShop: (shopName: string) => request('/settings/shop', { method: 'PUT', body: JSON.stringify({ shopName }) }),
     updateLanguage: (language: string) => request('/settings/language', { method: 'PUT', body: JSON.stringify({ language }) }),
   },
+  backup: {
+    check: () => request('/backup/check'),
+    download: async () => {
+      const token = localStorage.getItem('karobar_token');
+      const res = await fetch(`${API_BASE}/backup/download`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) throw new Error('Backup download failed');
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'karobar-backup.sql';
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    },
+    restore: async (file: File) => {
+      const token = localStorage.getItem('karobar_token');
+      const formData = new FormData();
+      formData.append('backup', file);
+      const res = await fetch(`${API_BASE}/backup/restore`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` },
+        body: formData,
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Restore failed');
+      return data;
+    },
+  },
 };

@@ -176,6 +176,9 @@ async function initTables() {
       await client.query(idx);
     }
 
+    // Migrations
+    await client.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS last_backup_at TIMESTAMP`).catch(() => {});
+
     await client.query('COMMIT');
   } catch (err) {
     await client.query('ROLLBACK');

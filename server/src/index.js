@@ -9,6 +9,7 @@ const rateLimit = require('express-rate-limit');
 const helmet = require('helmet');
 const { body, query, validationResult } = require('express-validator');
 const { getPool, all, get, run, transaction } = require('./database');
+const path = require('path');
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -672,8 +673,129 @@ app.put('/api/settings/shop', auth, ensureDb, [
   } catch (err) { res.status(500).json({ error: sanitizeError(err) }); }
 });
 
+// ==================== BACKUP & RESTORE ====================
+const { execFile } = require('child_process');
+const { promisify } = require('util');
+const fs = require('fs');
+const os = require('os');
+const multer = require('multer');
+const upload = multer({ dest: os.tmpdir(), limits: { fileSize: 50 * 1024 * 1024 } });
+const execFileAsync = promisify(execFile);
+
+const BACKUP_INTERVAL_DAYS = 10;
+
+app.get('/api/backup/check', auth, ensureDb, async (req, res) => {
+  try {
+    const user = await get('SELECT last_backup_at FROM users WHERE id = $1', [req.userId]);
+    const lastBackup = user?.last_backup_at;
+    if (!lastBackup) return res.json({ needsBackup: true, lastBackup: null });
+    const daysSince = (Date.now() - new Date(lastBackup).getTime()) / (1000 * 60 * 60 * 24);
+    res.json({ needsBackup: daysSince >= BACKUP_INTERVAL_DAYS, lastBackup });
+  } catch (err) { res.status(500).json({ error: sanitizeError(err) }); }
+});
+
+app.get('/api/backup/download', auth, ensureDb, async (req, res) => {
+  try {
+    const dbUrl = process.env.DATABASE_URL;
+    if (!dbUrl) return res.status(500).json({ error: 'Database URL not configured' });
+
+    const tmpFile = path.join(os.tmpdir(), `karobar-backup-${Date.now()}.sql`);
+    try {
+      await execFileAsync('pg_dump', [
+        '--no-owner', '--no-privileges', '--clean', '--if-exists',
+        '-f', tmpFile, dbUrl
+      ], { timeout: 60000 });
+    } catch (dumpErr) {
+      // pg_dump might not be available, fallback to manual dump
+      console.error('pg_dump failed, using manual backup:', dumpErr.message);
+      await manualBackup(dbUrl, tmpFile);
+    }
+
+    await run('UPDATE users SET last_backup_at = CURRENT_TIMESTAMP WHERE id = $1', [req.userId]);
+
+    res.setHeader('Content-Type', 'application/sql');
+    res.setHeader('Content-Disposition', 'attachment; filename="karobar-backup.sql"');
+
+    const stream = fs.createReadStream(tmpFile);
+    stream.pipe(res);
+    stream.on('end', () => { fs.unlink(tmpFile, () => {}); });
+    stream.on('error', () => { fs.unlink(tmpFile, () => {}); res.status(500).json({ error: 'Backup read failed' }); });
+  } catch (err) { res.status(500).json({ error: sanitizeError(err) }); }
+});
+
+async function manualBackup(dbUrl, tmpFile) {
+  const pool = await getPool();
+  const client = await pool.connect();
+  try {
+    let sql = '-- Karobar Backup\n-- Generated: ' + new Date().toISOString() + '\n\n';
+    const tables = ['inventory_adjustments', 'returns', 'notifications', 'customer_payments', 'sale_items', 'order_items', 'sales', 'orders', 'products', 'customers', 'connected_devices', 'qr_tokens', 'users'];
+    for (const table of tables) {
+      const rows = (await client.query(`SELECT * FROM ${table}`)).rows;
+      if (rows.length === 0) continue;
+      sql += `-- Table: ${table}\n`;
+      sql += `TRUNCATE TABLE ${table} CASCADE;\n`;
+      for (const row of rows) {
+        const cols = Object.keys(row);
+        const vals = cols.map(c => {
+          const v = row[c];
+          if (v === null) return 'NULL';
+          if (typeof v === 'string') return `'${v.replace(/'/g, "''")}'`;
+          if (typeof v === 'boolean') return v ? 'TRUE' : 'FALSE';
+          if (v instanceof Date) return `'${v.toISOString()}'`;
+          return v;
+        });
+        sql += `INSERT INTO ${table} (${cols.join(', ')}) VALUES (${vals.join(', ')});\n`;
+      }
+      sql += '\n';
+    }
+    fs.writeFileSync(tmpFile, sql);
+  } finally { client.release(); }
+}
+
+app.post('/api/backup/restore', auth, ensureDb, upload.single('backup'), async (req, res) => {
+  try {
+    if (!req.file) return res.status(400).json({ error: 'No backup file uploaded' });
+
+    const dbUrl = process.env.DATABASE_URL;
+    if (!dbUrl) return res.status(500).json({ error: 'Database URL not configured' });
+
+    // Read the uploaded SQL file
+    const sqlContent = fs.readFileSync(req.file.path, 'utf8');
+    fs.unlinkSync(req.file.path);
+
+    if (!sqlContent || sqlContent.trim().length === 0) {
+      return res.status(400).json({ error: 'Backup file is empty' });
+    }
+
+    // Execute the SQL to restore
+    const pool = await getPool();
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+      // Split by semicolons and execute each statement
+      const statements = sqlContent.split(';').filter(s => s.trim().length > 0);
+      for (const stmt of statements) {
+        const trimmed = stmt.trim();
+        if (!trimmed || trimmed.startsWith('--')) continue;
+        try {
+          await client.query(trimmed);
+        } catch (e) {
+          console.error('Restore statement error:', e.message, trimmed.substring(0, 100));
+        }
+      }
+      await client.query('COMMIT');
+    } catch (e) {
+      await client.query('ROLLBACK');
+      throw e;
+    } finally {
+      client.release();
+    }
+
+    res.json({ message: 'Backup restored successfully' });
+  } catch (err) { res.status(500).json({ error: 'Restore failed: ' + sanitizeError(err) }); }
+});
+
 // ==================== STATIC / CATCH-ALL ====================
-const path = require('path');
 const publicDir = path.join(__dirname, '..', 'public');
 app.use(express.static(publicDir));
 app.use((req, res) => {
