@@ -103,6 +103,8 @@ export default function Sales() {
       setSaleSuccess(result); setShowNewSale(false);
       setSaleCustomerId(''); setSaleItems([]); setSalePaid('');
       toast('success', t.saleCompleted);
+      setSales(prev => [{ ...result, items: '' }, ...prev]);
+      setTotalSales(prev => prev + 1);
       loadData();
     } catch (err: any) { setSaleError(err.message); } finally { setSubmittingSale(false); }
   };

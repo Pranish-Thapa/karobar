@@ -473,17 +473,23 @@ app.get('/api/sales', auth, ensureDb, apiLimiter, async (req, res) => {
     const { search, from, to, page = 1, limit = 50 } = req.query;
     const offset = (Math.max(1, parseInt(page)) - 1) * parseInt(limit);
     const lim = Math.min(200, Math.max(1, parseInt(limit)));
-    let query = `SELECT s.*, c.name as customer_name, c.phone as customer_phone, string_agg(p.name || ' (' || si.quantity || ')', ', ') as items FROM sales s LEFT JOIN customers c ON c.id = s.customer_id LEFT JOIN sale_items si ON si.sale_id = s.id LEFT JOIN products p ON p.id = si.product_id WHERE s.user_id = $1`;
-    const params = [req.userId];
-    let paramIdx = 2;
-    if (search) { query += ` AND (c.name ILIKE $${paramIdx} OR c.phone ILIKE $${paramIdx} OR s.id::text ILIKE $${paramIdx})`; params.push(`%${search}%`); paramIdx++; }
-    if (from) { query += ` AND s.sale_date >= $${paramIdx}`; params.push(from); paramIdx++; }
-    if (to) { query += ` AND s.sale_date <= $${paramIdx}`; params.push(to); paramIdx++; }
-    params.push(lim, offset);
-    const sales = await all(`${query} GROUP BY s.id, c.name, c.phone ORDER BY s.sale_date DESC LIMIT $${paramIdx} OFFSET $${paramIdx + 1}`, params);
-    const countParams = params.slice(0, -2);
-    const whereClause = query.replace(/SELECT .* FROM sales s/, '').replace(/GROUP BY.*$/, '');
-    const count = await get(`SELECT COUNT(*) as total FROM sales s LEFT JOIN customers c ON c.id = s.customer_id WHERE s.user_id = $1${whereClause}`, countParams);
+
+    let where = 'WHERE s.user_id = $1';
+    const whereParams = [req.userId];
+    let pIdx = 2;
+    if (search) { where += ` AND (c.name ILIKE $${pIdx} OR c.phone ILIKE $${pIdx} OR s.id::text ILIKE $${pIdx})`; whereParams.push(`%${search}%`); pIdx++; }
+    if (from) { where += ` AND s.sale_date >= $${pIdx}`; whereParams.push(from); pIdx++; }
+    if (to) { where += ` AND s.sale_date <= $${pIdx}`; whereParams.push(to); pIdx++; }
+
+    const dataParams = [...whereParams, lim, offset];
+    const sales = await all(
+      `SELECT s.*, c.name as customer_name, c.phone as customer_phone, string_agg(p.name || ' (' || si.quantity || ')', ', ') as items
+       FROM sales s LEFT JOIN customers c ON c.id = s.customer_id
+       LEFT JOIN sale_items si ON si.sale_id = s.id LEFT JOIN products p ON p.id = si.product_id
+       ${where} GROUP BY s.id, c.name, c.phone ORDER BY s.sale_date DESC LIMIT $${pIdx} OFFSET $${pIdx + 1}`,
+      dataParams
+    );
+    const count = await get(`SELECT COUNT(*) as total FROM sales s LEFT JOIN customers c ON c.id = s.customer_id ${where}`, whereParams);
     res.json({ data: sales, total: parseInt(count.total), page: parseInt(page), limit: lim });
   } catch (err) { res.status(500).json({ error: sanitizeError(err) }); }
 });
