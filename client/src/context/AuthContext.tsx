@@ -6,6 +6,7 @@ interface User {
   name: string;
   email: string;
   shopName: string;
+  language?: string;
 }
 
 interface AuthContextType {

@@ -20,9 +20,7 @@ export const api = {
     login: (data: { email: string; password: string }) => request('/auth/login', { method: 'POST', body: JSON.stringify(data) }),
     me: () => request('/auth/me'),
   },
-  dashboard: {
-    get: () => request('/dashboard'),
-  },
+  dashboard: { get: () => request('/dashboard') },
   customers: {
     list: (search?: string) => request(`/customers${search ? `?search=${encodeURIComponent(search)}` : ''}`),
     get: (id: string) => request(`/customers/${id}`),
@@ -42,6 +40,7 @@ export const api = {
     create: (data: any) => request('/products', { method: 'POST', body: JSON.stringify(data) }),
     update: (id: string, data: any) => request(`/products/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
     delete: (id: string) => request(`/products/${id}`, { method: 'DELETE' }),
+    import: (products: any[]) => request('/products/import', { method: 'POST', body: JSON.stringify({ products }) }),
   },
   orders: {
     list: (status?: string) => request(`/orders${status ? `?status=${status}` : ''}`),
@@ -51,22 +50,31 @@ export const api = {
     complete: (id: string) => request(`/orders/${id}/complete`, { method: 'POST' }),
   },
   sales: {
-    list: (params?: { search?: string; from?: string; to?: string }) => {
-      const searchParams = new URLSearchParams();
-      if (params?.search) searchParams.set('search', params.search);
-      if (params?.from) searchParams.set('from', params.from);
-      if (params?.to) searchParams.set('to', params.to);
-      return request(`/sales${searchParams.toString() ? `?${searchParams}` : ''}`);
+    list: (params?: { search?: string; from?: string; to?: string; customer_id?: string }) => {
+      const sp = new URLSearchParams();
+      if (params?.search) sp.set('search', params.search);
+      if (params?.from) sp.set('from', params.from);
+      if (params?.to) sp.set('to', params.to);
+      if (params?.customer_id) sp.set('customer_id', params.customer_id);
+      return request(`/sales${sp.toString() ? `?${sp}` : ''}`);
     },
     create: (data: any) => request('/sales', { method: 'POST', body: JSON.stringify(data) }),
   },
+  returns: {
+    list: () => request('/returns'),
+    create: (data: any) => request('/returns', { method: 'POST', body: JSON.stringify(data) }),
+  },
+  inventory: {
+    adjust: (data: any) => request('/inventory/adjust', { method: 'POST', body: JSON.stringify(data) }),
+    adjustments: () => request('/inventory/adjustments'),
+  },
   profitLoss: {
     get: (params?: { period?: string; from?: string; to?: string }) => {
-      const searchParams = new URLSearchParams();
-      if (params?.period) searchParams.set('period', params.period);
-      if (params?.from) searchParams.set('from', params.from);
-      if (params?.to) searchParams.set('to', params.to);
-      return request(`/profit-loss${searchParams.toString() ? `?${searchParams}` : ''}`);
+      const sp = new URLSearchParams();
+      if (params?.period) sp.set('period', params.period);
+      if (params?.from) sp.set('from', params.from);
+      if (params?.to) sp.set('to', params.to);
+      return request(`/profit-loss${sp.toString() ? `?${sp}` : ''}`);
     },
   },
   notifications: {
@@ -82,10 +90,9 @@ export const api = {
     list: () => request('/devices'),
     remove: (id: string) => request(`/devices/${id}`, { method: 'DELETE' }),
   },
-  categories: {
-    list: () => request('/categories'),
-  },
+  categories: { list: () => request('/categories') },
   settings: {
     updateShop: (shopName: string) => request('/settings/shop', { method: 'PUT', body: JSON.stringify({ shopName }) }),
+    updateLanguage: (language: string) => request('/settings/language', { method: 'PUT', body: JSON.stringify({ language }) }),
   },
 };
