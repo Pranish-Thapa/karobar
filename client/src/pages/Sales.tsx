@@ -87,10 +87,10 @@ export default function Sales() {
 
   const addSaleItem = () => setSaleItems([...saleItems, { product_id: '', quantity: 1 }]);
   const removeSaleItem = (i: number) => setSaleItems(saleItems.filter((_, idx) => idx !== i));
-  const updateSaleItem = (i: number, field: string, value: any) => { const items = [...saleItems]; (items[i] as any)[field] = field === 'quantity' ? parseInt(value) || 1 : value; setSaleItems(items); };
+  const updateSaleItem = (i: number, field: string, value: any) => { setSaleItems(saleItems.map((item, idx) => idx === i ? { ...item, [field]: field === 'quantity' ? parseInt(value) || 1 : value } : item)); };
   const addOrderItem = () => setOrderItems([...orderItems, { product_id: '', quantity: 1 }]);
   const removeOrderItem = (i: number) => setOrderItems(orderItems.filter((_, idx) => idx !== i));
-  const updateOrderItem = (i: number, field: string, value: any) => { const items = [...orderItems]; (items[i] as any)[field] = field === 'quantity' ? parseInt(value) || 1 : value; setOrderItems(items); };
+  const updateOrderItem = (i: number, field: string, value: any) => { setOrderItems(orderItems.map((item, idx) => idx === i ? { ...item, [field]: field === 'quantity' ? parseInt(value) || 1 : value } : item)); };
   const getSaleTotal = () => saleItems.reduce((sum, item) => { const product = products.find(p => p.id === item.product_id); return sum + (product ? product.selling_price * item.quantity : 0); }, 0);
 
   const handleNewSale = async (e: React.FormEvent) => {
@@ -136,7 +136,6 @@ export default function Sales() {
   };
 
   const upcomingOrders = orders.filter(o => o.status === 'upcoming');
-  const returnableSales = sales.filter(s => s.due_amount >= 0);
 
   return (
     <div className="pb-20 lg:pb-0">

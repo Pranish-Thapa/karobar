@@ -28,7 +28,7 @@ export default function Settings() {
   const restoreFileRef = useRef<File | null>(null);
 
   useEffect(() => {
-    api.devices.list().then(setDevices).finally(() => setDevicesLoading(false));
+    api.devices.list().then(setDevices).catch(() => {}).finally(() => setDevicesLoading(false));
     api.backup.check().then(res => setLastBackup(res.lastBackup)).catch(() => {});
   }, []);
 
@@ -38,7 +38,7 @@ export default function Settings() {
     try {
       await api.settings.updateShop(shopName);
       updateUser({ shopName });
-      toast('success', t.success + '!');
+      setMessage(t.success + '!');
     } catch (err: any) {
       toast('error', err.message);
     } finally {

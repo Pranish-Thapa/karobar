@@ -45,6 +45,7 @@ export default function Inventory() {
   const debouncedSetSearch = useRef(debounce((val: string) => { setDebouncedSearch(val); }, 300)).current;
 
   useEffect(() => { debouncedSetSearch(search); }, [search]);
+  useEffect(() => { setPage(1); }, [debouncedSearch]);
 
   const loadProducts = async () => {
     try {

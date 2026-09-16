@@ -18,7 +18,7 @@ export default function Dashboard() {
 
   useEffect(() => {
     api.dashboard.get().then(setData).catch(() => {
-      toast('error', t.dashboard);
+      toast('error', t.failedToLoad);
     }).finally(() => setLoading(false));
   }, []);
 
@@ -31,7 +31,7 @@ export default function Dashboard() {
     );
   }
 
-  if (!data) return <div className="text-center py-8 text-gray-500">{t.dashboard}</div>;
+  if (!data) return <div className="text-center py-8 text-gray-500 dark:text-gray-400">{t.failedToLoad}</div>;
 
   const salesData = chartPeriod === '7d' ? data.salesLast7 : data.salesLast30;
   const profitData = chartPeriod === '7d' ? data.profitLast7 : data.profitLast30;

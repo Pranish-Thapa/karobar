@@ -32,6 +32,7 @@ const ne = {
   walkInCustomer: 'वाक-इन ग्राहक',
   noItems: 'कुनै सामान छैन',
   partial: 'आंशिक',
+  failedToLoad: 'डेटा लोड गर्न असफल',
 
   // Customers
   addCustomer: 'ग्राहक थप्नुहोस्',

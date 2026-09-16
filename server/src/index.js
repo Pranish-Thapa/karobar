@@ -209,7 +209,7 @@ app.post('/api/customers/:id/payments', auth, ensureDb, [
       const c = customer.rows[0];
       if (amount > c.outstanding_dues) throw new Error('Payment amount exceeds outstanding dues');
       await client.query('INSERT INTO customer_payments (id, customer_id, sale_id, amount, notes) VALUES ($1, $2, $3, $4, $5)', [uuidv4(), req.params.id, sale_id || null, amount, notes || '']);
-      await client.query('UPDATE customers SET total_paid = total_paid + $1, outstanding_dues = outstanding_dues - $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2', [amount, req.params.id]);
+      await client.query('UPDATE customers SET total_paid = total_paid + $1, outstanding_dues = GREATEST(0, outstanding_dues - $1), updated_at = CURRENT_TIMESTAMP WHERE id = $2', [amount, req.params.id]);
       if (sale_id) {
         const sale = await client.query('SELECT * FROM sales WHERE id = $1 AND customer_id = $2 FOR UPDATE', [sale_id, req.params.id]);
         if (sale.rows.length > 0) {
@@ -343,6 +343,10 @@ app.post('/api/orders', auth, ensureDb, [
   try {
     const { customer_id, items, notes, expected_date, amount_paid } = req.body;
     const result = await transaction(async (client) => {
+      if (customer_id) {
+        const cust = await client.query('SELECT id FROM customers WHERE id = $1 AND user_id = $2', [customer_id, req.userId]);
+        if (cust.rows.length === 0) throw new Error('Customer not found');
+      }
       const orderId = uuidv4();
       let totalAmount = 0;
       for (const item of items) {
@@ -353,7 +357,8 @@ app.post('/api/orders', auth, ensureDb, [
         totalAmount += product.selling_price * item.quantity;
         await client.query('INSERT INTO order_items (id, order_id, product_id, quantity, selling_price, actual_price) VALUES ($1,$2,$3,$4,$5,$6)', [uuidv4(), orderId, item.product_id, item.quantity, product.selling_price, product.actual_price]);
       }
-      const paid = amount_paid || 0;
+      const paid = Math.max(0, amount_paid || 0);
+      if (paid > totalAmount) throw new Error('Amount paid cannot exceed total');
       await client.query('INSERT INTO orders (id, user_id, customer_id, notes, expected_date, total_amount, amount_paid, due_amount) VALUES ($1,$2,$3,$4,$5,$6,$7,$8)', [orderId, req.userId, customer_id || null, notes || '', expected_date || null, totalAmount, paid, totalAmount - paid]);
       return (await client.query('SELECT * FROM orders WHERE id = $1', [orderId])).rows[0];
     });
@@ -362,14 +367,15 @@ app.post('/api/orders', auth, ensureDb, [
 });
 
 app.put('/api/orders/:id', auth, ensureDb, [
-  body('status').optional().isIn(['upcoming', 'in_progress', 'completed', 'cancelled']).withMessage('Invalid status'),
+  body('status').optional().isIn(['upcoming', 'in_progress', 'cancelled']).withMessage('Invalid status'),
 ], validate, async (req, res) => {
   try {
     const { status, notes, expected_date } = req.body;
     const order = await get('SELECT * FROM orders WHERE id = $1 AND user_id = $2', [req.params.id, req.userId]);
     if (!order) return res.status(404).json({ error: 'Order not found' });
     if (order.status === 'completed') return res.status(400).json({ error: 'Cannot modify a completed order' });
-    await run('UPDATE orders SET status=$1, notes=$2, expected_date=$3 WHERE id=$4', [status || order.status, notes ?? order.notes, expected_date || order.expected_date, req.params.id]);
+    const result = await run('UPDATE orders SET status=$1, notes=$2, expected_date=$3 WHERE id=$4 AND user_id=$5', [status || order.status, notes ?? order.notes, expected_date || order.expected_date, req.params.id, req.userId]);
+    if (result.rowCount === 0) return res.status(404).json({ error: 'Order not found' });
     const updated = await get('SELECT * FROM orders WHERE id = $1', [req.params.id]);
     res.json(updated);
   } catch (err) { res.status(500).json({ error: sanitizeError(err) }); }
@@ -388,7 +394,7 @@ app.post('/api/orders/:id/complete', auth, ensureDb, async (req, res) => {
       const saleId = uuidv4();
       let totalRevenue = 0, totalCost = 0;
       for (const item of orderItems) {
-        const productRes = await client.query('SELECT * FROM products WHERE id = $1 FOR UPDATE', [item.product_id]);
+        const productRes = await client.query('SELECT * FROM products WHERE id = $1 AND user_id = $2 FOR UPDATE', [item.product_id, req.userId]);
         if (productRes.rows.length === 0) throw new Error('Product not found');
         const product = productRes.rows[0];
         if (item.quantity > product.stock) throw new Error(`Not enough stock for ${product.name}. Only ${product.stock} units available.`);
@@ -422,6 +428,10 @@ app.post('/api/sales', auth, ensureDb, [
   try {
     const { customer_id, items, amount_paid, notes } = req.body;
     const result = await transaction(async (client) => {
+      if (customer_id) {
+        const cust = await client.query('SELECT id FROM customers WHERE id = $1 AND user_id = $2', [customer_id, req.userId]);
+        if (cust.rows.length === 0) throw new Error('Customer not found');
+      }
       const saleId = uuidv4();
       let totalRevenue = 0, totalCost = 0;
       for (const item of items) {
@@ -439,8 +449,9 @@ app.post('/api/sales', auth, ensureDb, [
           if (existing.rows.length === 0) await client.query('INSERT INTO notifications (id, user_id, type, title, message, entity_id, entity_type) VALUES ($1,$2,$3,$4,$5,$6,$7)', [uuidv4(), req.userId, 'low_stock', 'Low Stock Alert', `${product.name} is low in stock. Only ${newStock} units remaining.`, item.product_id, 'product']);
         }
       }
-      const paid = amount_paid || 0;
-      const due = totalRevenue - paid;
+      const paid = Math.max(0, amount_paid || 0);
+      if (paid > totalRevenue) throw new Error('Amount paid cannot exceed total');
+      const due = Math.max(0, totalRevenue - paid);
       const profit = totalRevenue - totalCost;
       await client.query('INSERT INTO sales (id, user_id, customer_id, total_amount, cost_amount, profit, amount_paid, due_amount, notes) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)', [saleId, req.userId, customer_id || null, totalRevenue, totalCost, profit, paid, due, notes || '']);
       if (customer_id) await client.query('UPDATE customers SET total_purchases = total_purchases + $1, total_paid = total_paid + $2, outstanding_dues = outstanding_dues + $3, updated_at = CURRENT_TIMESTAMP WHERE id = $4', [totalRevenue, paid, due, customer_id]);
@@ -464,8 +475,8 @@ app.get('/api/sales', auth, ensureDb, apiLimiter, async (req, res) => {
     params.push(lim, offset);
     const sales = await all(`${query} GROUP BY s.id, c.name, c.phone ORDER BY s.sale_date DESC LIMIT $${paramIdx} OFFSET $${paramIdx + 1}`, params);
     const countParams = params.slice(0, -2);
-    const countQuery = `SELECT COUNT(*) as total FROM sales s LEFT JOIN customers c ON c.id = s.customer_id WHERE s.user_id = $1` + query.replace(/SELECT .* FROM sales s/, '').replace(/GROUP BY.*$/, '');
-    const count = await get(`SELECT COUNT(*) as total FROM sales s LEFT JOIN customers c ON c.id = s.customer_id WHERE s.user_id = $1` + (search ? ` AND (c.name ILIKE $2 OR c.phone ILIKE $2 OR s.id::text ILIKE $2)` : '') + (from ? ` AND s.sale_date >= $${search ? 3 : 2}` : '') + (to ? ` AND s.sale_date <= $${search ? (from ? 4 : 3) : (from ? 3 : 2)}` : ''), countParams);
+    const whereClause = query.replace(/SELECT .* FROM sales s/, '').replace(/GROUP BY.*$/, '');
+    const count = await get(`SELECT COUNT(*) as total FROM sales s LEFT JOIN customers c ON c.id = s.customer_id WHERE s.user_id = $1${whereClause}`, countParams);
     res.json({ data: sales, total: parseInt(count.total), page: parseInt(page), limit: lim });
   } catch (err) { res.status(500).json({ error: sanitizeError(err) }); }
 });

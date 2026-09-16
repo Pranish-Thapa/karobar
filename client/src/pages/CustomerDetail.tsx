@@ -128,7 +128,7 @@ export default function CustomerDetail() {
               <span className="text-primary-700 text-xl font-bold">{customer.name.charAt(0).toUpperCase()}</span>
             </div>
             <div>
-              <h1 className="text-xl font-bold text-gray-900">{customer.name}</h1>
+              <h1 className="text-xl font-bold text-gray-900 dark:text-white">{customer.name}</h1>
               {customer.phone && <p className="text-gray-500 flex items-center gap-1"><Phone className="w-3 h-3" />{customer.phone}</p>}
               {customer.address && <p className="text-gray-500 flex items-center gap-1 text-sm"><MapPin className="w-3 h-3" />{customer.address}</p>}
             </div>
@@ -168,13 +168,13 @@ export default function CustomerDetail() {
       {/* Payments */}
       {customer.payments?.length > 0 && (
         <div className="card mb-6">
-          <h2 className="text-lg font-semibold text-gray-900 mb-4">{t.recordPayment}</h2>
+          <h2 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">{t.recordPayment}</h2>
           <div className="space-y-3">
             {customer.payments.map((payment: any) => (
-              <div key={payment.id} className="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
+              <div key={payment.id} className="flex items-center justify-between p-4 bg-gray-50 dark:bg-gray-700/50 rounded-lg">
                 <div>
-                  <p className="font-medium text-gray-900">{formatCurrency(payment.amount)}</p>
-                  <p className="text-sm text-gray-500">{formatDateTime(payment.created_at)}</p>
+                  <p className="font-medium text-gray-900 dark:text-white">{formatCurrency(payment.amount)}</p>
+                  <p className="text-sm text-gray-500 dark:text-gray-400">{formatDateTime(payment.created_at)}</p>
                 </div>
               </div>
             ))}
@@ -184,13 +184,13 @@ export default function CustomerDetail() {
 
       {/* Transaction History */}
       <div className="card">
-        <h2 className="text-lg font-semibold text-gray-900 mb-4">{t.transactionHistory}</h2>
+        <h2 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">{t.transactionHistory}</h2>
         {customer.transactions?.length > 0 ? (
           <div className="space-y-3">
             {customer.transactions.map((tx: any) => (
-              <div key={tx.id} className="p-4 bg-gray-50 rounded-lg">
+              <div key={tx.id} className="p-4 bg-gray-50 dark:bg-gray-700/50 rounded-lg">
                 <div className="flex items-center justify-between mb-2">
-                  <p className="font-medium text-gray-900">{formatDateTime(tx.sale_date)}</p>
+                  <p className="font-medium text-gray-900 dark:text-white">{formatDateTime(tx.sale_date)}</p>
                   <span className={`badge ${tx.due_amount > 0 ? 'badge-warning' : 'badge-success'}`}>
                     {tx.due_amount > 0 ? t.partial : t.noDues}
                   </span>
@@ -224,10 +224,10 @@ export default function CustomerDetail() {
       {/* Payment Modal */}
       {showPayment && (
         <div className="fixed inset-0 z-50 bg-black/50 flex items-end sm:items-center justify-center p-0 sm:p-4">
-          <div className="bg-white rounded-t-2xl sm:rounded-2xl w-full sm:max-w-md">
-            <div className="p-4 border-b">
-              <h2 className="text-lg font-semibold">{t.recordPayment}</h2>
-              <p className="text-sm text-gray-500">{t.outstanding}: {formatCurrency(customer.outstanding_dues)}</p>
+          <div className="bg-white dark:bg-gray-800 rounded-t-2xl sm:rounded-2xl w-full sm:max-w-md">
+            <div className="p-4 border-b dark:border-gray-700">
+              <h2 className="text-lg font-semibold dark:text-white">{t.recordPayment}</h2>
+              <p className="text-sm text-gray-500 dark:text-gray-400">{t.outstanding}: {formatCurrency(customer.outstanding_dues)}</p>
             </div>
             {paymentError && <div className="mx-4 mt-4 p-3 bg-red-50 text-red-700 rounded-lg text-sm">{paymentError}</div>}
             <form onSubmit={handlePayment} className="p-4 space-y-4">
@@ -247,9 +247,9 @@ export default function CustomerDetail() {
       {/* Edit Customer Modal */}
       {showEdit && (
         <div className="fixed inset-0 z-50 bg-black/50 flex items-end sm:items-center justify-center p-0 sm:p-4">
-          <div className="bg-white rounded-t-2xl sm:rounded-2xl w-full sm:max-w-md">
-            <div className="p-4 border-b">
-              <h2 className="text-lg font-semibold">{t.editCustomer}</h2>
+          <div className="bg-white dark:bg-gray-800 rounded-t-2xl sm:rounded-2xl w-full sm:max-w-md">
+            <div className="p-4 border-b dark:border-gray-700">
+              <h2 className="text-lg font-semibold dark:text-white">{t.editCustomer}</h2>
             </div>
             {editError && <div className="mx-4 mt-4 p-3 bg-red-50 text-red-700 rounded-lg text-sm">{editError}</div>}
             <form onSubmit={handleEdit} className="p-4 space-y-4">

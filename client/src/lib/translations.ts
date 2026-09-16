@@ -32,6 +32,7 @@ const en = {
   walkInCustomer: 'Walk-in Customer',
   noItems: 'No items',
   partial: 'Partial',
+  failedToLoad: 'Failed to load data',
 
   // Customers
   addCustomer: 'Add Customer',
